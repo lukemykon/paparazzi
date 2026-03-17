@@ -67,6 +67,15 @@ enum navigation_state_t navigation_state = SAFE_AND_WAIT;
 
 Loss Loss_image = {0, 0, 0};
 
+bool    current_gate_found = false;
+int16_t current_gate_steering_x = 0;
+uint8_t current_gate_confidence = 0;
+
+// Tuning parameters for the gate
+#define GATE_CONFIDENCE_THRESHOLD 75    // Only trust the gate if confidence is > 40%
+#define GATE_STEERING_GAIN        0.15f // Converts pixel offset to turn degrees. Tune this!
+#define GATE_MAX_TURN_DEGREES     15.0f // Safety limit to prevent extreme yaw snaps
+
 /*
  * This next section defines an ABI messaging event (http://wiki.paparazziuav.org/wiki/ABI), necessary
  * any time data calculated in another module needs to be accessed. Including the file where this external
@@ -83,14 +92,18 @@ static void cv_detection_message_callback(
     int16_t  loss_left,
     int16_t  loss_middle,
     int16_t  loss_right,
-    int16_t  __attribute__((unused)) extra1,
-    int32_t  __attribute__((unused)) extra2,
-    int16_t  __attribute__((unused)) extra3)
+    int16_t  gate_found,
+    int32_t  gate_steering_x,
+    int16_t  gate_confidence)
 {
   // Safe cast: ABI guarantees int16, loss is always >= 0
   Loss_image.left   = (uint16_t)loss_left;
   Loss_image.middle = (uint16_t)loss_middle;
   Loss_image.right  = (uint16_t)loss_right;
+  current_gate_steering_x = gate_steering_x;
+  current_gate_confidence = (uint8_t)gate_confidence; 
+  current_gate_found      = (gate_found == 1);
+  
 }
 
 /*
@@ -108,6 +121,18 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
 {
   // only evaluate our state machine if we are flying
   if(!autopilot_in_flight()){ return; }
+
+  if (current_gate_found && current_gate_confidence > GATE_CONFIDENCE_THRESHOLD) {
+      if (navigation_state != GATE_DETECTED) {
+          VERBOSE_PRINT(">>> GATE LOCKED! Confidence: %d%%. Overriding State! <<<\n", current_gate_confidence);
+      }
+      navigation_state = GATE_DETECTED;
+  } 
+  // If we lose sight of the gate while in GATE_DETECTED mode, fall back to safe mode
+  else if (navigation_state == GATE_DETECTED) {
+      VERBOSE_PRINT(">>> Gate Lost. Reverting to Safe Avoidance. <<<\n");
+      navigation_state = SAFE_AND_WAIT;
+  }
   
   VERBOSE_PRINT("State: %d | Losses L:%u M:%u R:%u\n", navigation_state, Loss_image.left, Loss_image.middle, Loss_image.right);
 
@@ -158,6 +183,30 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
       } else {
         // Still clear — advance goal waypoint
         move_waypoint_forward(WP_GOAL, MOVE_DISTANCE);
+      }
+      break;
+
+    case GATE_DETECTED:
+      {
+        // 1. Calculate how much to turn using a Proportional (P) controller
+        // A positive steering_x means gate is to the right -> positive turn degrees
+        float turn_angle = (float)current_gate_steering_x * GATE_STEERING_GAIN;
+
+        // 2. Bound the turn to prevent aggressive yaw snapping
+        if (turn_angle > GATE_MAX_TURN_DEGREES) turn_angle = GATE_MAX_TURN_DEGREES;
+        if (turn_angle < -GATE_MAX_TURN_DEGREES) turn_angle = -GATE_MAX_TURN_DEGREES;
+
+        // 3. Apply the rotation to center the gate
+        rotate_drone_heading(turn_angle);
+
+        // 4. Aggressively move forward to fly through the gate
+        move_waypoint_forward(WP_TRAJECTORY, MOVE_DISTANCE * 1.5f);
+        move_waypoint_forward(WP_GOAL, MOVE_DISTANCE * 1.5f);
+
+        // 5. Still respect the arena boundaries!
+        if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
+            navigation_state = OUT_OF_BOUNDS;
+        }
       }
       break;
 

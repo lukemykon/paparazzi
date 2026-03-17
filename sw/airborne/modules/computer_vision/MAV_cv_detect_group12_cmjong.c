@@ -28,6 +28,7 @@
 // Own header
 #include "modules/computer_vision/MAV_cv_detect_group12_cmjong.h"
 #include "modules/computer_vision/MAV_cv_color_group12_cmjong.h"
+#include "modules/computer_vision/MAV_cv_color_gate_group12_rghendriks.h"
 
 #include "modules/computer_vision/cv.h"
 #include "modules/core/abi.h"
@@ -88,9 +89,12 @@ struct cv_detect_message {
   int16_t  loss_left;
   int16_t  loss_middle;
   int16_t  loss_right;
+  bool     gate_found;      // TRUE if a valid gate is currently visible
+  int16_t  gate_steering_x; // The horizontal offset to center the drone
+  uint8_t  gate_confidence; // 0-100 score of how certain the algorithm is
   bool updated;
 };
-struct cv_detect_message global_message[1];
+struct cv_detect_message global_message[2];
 
 
 
@@ -112,10 +116,16 @@ static struct image_t *object_detector(struct image_t *img, uint8_t camera_id)
   */
 
   PixelCount count = orange_detection(img, orange_lum_min, orange_lum_max, orange_cb_min, orange_cb_max, orange_cr_min, orange_cr_max, TRUE);
+  
   // count.left, count.middle, count.right
   //VERBOSE_PRINT("Orange pixel count: %u left , %u middle , %u right", Count.left , Count.middle, Count.right);
 
+  GateResult gate = detect_gate(img, blue_lum_min, blue_lum_max, blue_cb_min, blue_cb_max, blue_cr_min, blue_cr_max);
 
+  if (gate.found) {
+      // Uncomment this if you want terminal spam when debugging the gate:
+      VERBOSE_PRINT("Gate Found! Conf: %d%% | Steer X: %d\n", gate.confidence, gate.steering_x);
+  }
    /*
   ----------------------------------------------------------------------------------------------------------------
   Weighted function below here 
@@ -129,6 +139,9 @@ static struct image_t *object_detector(struct image_t *img, uint8_t camera_id)
   global_message[camera_id].loss_left   = weighted_left;
   global_message[camera_id].loss_middle = weighted_middle;
   global_message[camera_id].loss_right  = weighted_right;
+  global_message[camera_id].gate_found      = gate.found;
+  global_message[camera_id].gate_steering_x = gate.steering_x;
+  global_message[camera_id].gate_confidence = gate.confidence;
   global_message[camera_id].updated = TRUE;
   pthread_mutex_unlock(&mutex);
 
@@ -217,8 +230,10 @@ void MAV_cv_detect_group12_cmjong_periodic(void)
     local_message[0].loss_left,
     local_message[0].loss_middle,
     local_message[0].loss_right,
-    0, 0, 0);
-
+    local_message[0].gate_steering_x,  // sent as pixel_height (Gate X Steering)
+    local_message[0].gate_confidence,  // sent as quality (Gate Confidence %)
+    local_message[0].gate_found        // sent as extra (Gate Found: 1 or 0));
+    );
     local_message[0].updated = false;
   }
 

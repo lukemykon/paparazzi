@@ -94,6 +94,7 @@
   <makefile target="ap|nps">
     <file name="MAV_cv_detect_group12_cmjong.c"/>
     <file name="MAV_cv_color_group12_cmjong.c"/>  
+    <file name="MAV_cv_color_gate_group12_rghendriks.c"/>  
   </makefile>
 </module>
 
