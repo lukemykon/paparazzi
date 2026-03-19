@@ -18,6 +18,7 @@
 #include "modules/core/abi_sender_ids.h"
 
 #include "modules/computer_vision/snake_gate_detection.h"
+#include "modules/computer_vision/edge_gate_detection.h"
 
 #include "modules/datalink/telemetry.h"
 
@@ -79,6 +80,21 @@ PRINT_CONFIG_VAR(DETECT_GATE_EXCLUDE_PIXELS_BOTTOM)
 #endif
 PRINT_CONFIG_VAR(DETECT_GATE_SIMPLIFIED_PNP)
 
+#ifndef DETECT_GATE_USE_EDGE_MODE
+#define DETECT_GATE_USE_EDGE_MODE 0
+#endif
+PRINT_CONFIG_VAR(DETECT_GATE_USE_EDGE_MODE)
+
+#ifndef DETECT_GATE_GATE_SIZE_M
+#define DETECT_GATE_GATE_SIZE_M 1.4
+#endif
+PRINT_CONFIG_VAR(DETECT_GATE_GATE_SIZE_M)
+
+#ifndef DETECT_GATE_DRAW_GATE
+#define DETECT_GATE_DRAW_GATE 0
+#endif
+PRINT_CONFIG_VAR(DETECT_GATE_DRAW_GATE)
+
 
 // settings:
 int just_filtering;
@@ -104,7 +120,7 @@ struct gate_img gates_c[MAX_GATES];
 
 // Structure of the gate:
 struct FloatVect3 world_corners[4];
-float gate_size_m = 1.4; //size of gate edges in meters
+float gate_size_m = DETECT_GATE_GATE_SIZE_M; //size of gate edges in meters
 float gate_center_height = 0.0; //height of gate in meters ned wrt ground
 int n_corners = 3;
 
@@ -138,10 +154,30 @@ static struct image_t *detect_gate_func(struct image_t *img, uint8_t camera_id _
     // just color filter the image, so that the user can tune the thresholds:
     image_yuv422_colorfilt(img, img, color_Ym, color_YM, color_Um, color_UM, color_Vm, color_VM);
   } else {
-    // perform snake gate detection:
+    // perform gate detection:
     int n_gates;
+
+#if DETECT_GATE_USE_EDGE_MODE
+    // Use Jort's edge detection algorithm (Edge_detectV7)
+    {
+      int found = edge_gate_detection((char *)img->buf, img->w, img->h,
+                                       best_gate.x_corners, best_gate.y_corners,
+                                       &best_gate.quality, &best_gate.n_sides,
+                                       DETECT_GATE_DRAW_GATE);
+      n_gates = found ? 1 : 0;
+      if (!found) {
+        best_gate.quality = 0;
+        best_gate.n_sides = 0;
+      }
+    }
+#else
     snake_gate_detection(img, n_samples, min_px_size, min_gate_quality, gate_thickness, min_n_sides, color_Ym, color_YM,
                          color_Um, color_UM, color_Vm, color_VM, &best_gate, gates_c, &n_gates, exclude_top, exclude_bottom);
+#endif
+
+#ifndef DEBUG_GATE
+  (void)n_gates;
+#endif
 
 #if !CAMERA_ROTATED_90DEG_RIGHT
     int temp[4];
@@ -176,7 +212,17 @@ static struct image_t *detect_gate_func(struct image_t *img, uint8_t camera_id _
 #ifdef DEBUG_GATE
     printf("ratio = %f\n", ratio);
 #endif
-    if (best_gate.quality > min_gate_quality * 2) {
+    // Require: quality above threshold, reasonable polygon (3-8 sides), and minimum pixel size
+    {
+      float sz1_check = (float)(best_gate.x_corners[2] - best_gate.x_corners[0]);
+      float sz2_check = (float)(best_gate.y_corners[1] - best_gate.y_corners[0]);
+      float gate_px_size = (sz1_check > sz2_check) ? sz1_check : sz2_check;
+      if (best_gate.n_sides > 6 || gate_px_size < min_px_size) {
+        best_gate.quality = 0;  // reject: too many polygon sides or too small
+      }
+    }
+    float quality_factor = DETECT_GATE_USE_EDGE_MODE ? 1.2f : 2.0f;
+    if (best_gate.quality > min_gate_quality * quality_factor) {
 
 #if !CAMERA_ROTATED_90DEG_RIGHT
       // swap x and y coordinates:
@@ -219,7 +265,6 @@ static struct image_t *detect_gate_func(struct image_t *img, uint8_t camera_id _
         //height = (float) img->w;
         float pix_y = (best_gate.x_corners[1] + best_gate.x_corners[0]) / 2.0f;
         float pix_x = (best_gate.y_corners[2] + best_gate.y_corners[1]) / 2.0f;
-        printf("Not simulating, pix_x = %f, pix_y = %f\n", pix_x, pix_y);
         float angle_x = (pix_x-DETECT_GATE_CAMERA.camera_intrinsics.center_y) / DETECT_GATE_CAMERA.camera_intrinsics.focal_y;
         float angle_y = (pix_y-DETECT_GATE_CAMERA.camera_intrinsics.center_x) / DETECT_GATE_CAMERA.camera_intrinsics.focal_x;
         float dist = gate_size_m * (DETECT_GATE_CAMERA.camera_intrinsics.focal_x / size);

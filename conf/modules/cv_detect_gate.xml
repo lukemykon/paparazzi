@@ -78,5 +78,12 @@
     <file name="PnP_AHRS.c" dir="modules/computer_vision/lib/vision"/>
     <file name="snake_gate_detection.c" dir="modules/computer_vision"/>    
   </makefile>
+  <makefile target="nps">
+    <file name="edge_gate_detection.cpp" dir="modules/computer_vision"/>
+    <raw>
+      nps.CXXFLAGS += $(shell pkg-config --cflags opencv4 || pkg-config --cflags opencv)
+      nps.LDFLAGS  += $(shell pkg-config --libs   opencv4 || pkg-config --libs   opencv)
+    </raw>
+  </makefile>
 </module>
 

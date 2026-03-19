@@ -1,0 +1,55 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+
+<module name="square_passer_guided" dir="square_passer">
+  <doc>
+    <description>
+  This module provides an Orange-Avoider-style NAV behavior for passing through square gates.
+It consumes gate-relative localization estimates from cv_detect_gate (edge-based square gate detector),
+  searches for a gate with heading changes, aligns laterally by moving waypoints, then drives forward to pass through.
+    </description>
+    <define name="SQUARE_PASSER_RELATIVE_LOCALIZATION_ID" value="DETECT_GATE_ABI_ID" description="Which RELATIVE_LOCALIZATION sender to consume for gate-relative pose."/>
+  </doc>
+
+  <settings>
+    <dl_settings>
+      <dl_settings name="SquarePasserGuided">
+        <dl_setting var="spg_forward_speed" min="0" step="0.05" max="1.5" unit="m/s"/>
+        <dl_setting var="spg_max_lateral_speed" min="0" step="0.05" max="1.0" unit="m/s"/>
+        <dl_setting var="spg_lateral_gain" min="0" step="0.05" max="3.0"/>
+        <dl_setting var="spg_search_heading_rate" min="0" step="5" max="90" unit="rad" alt_unit="deg/s"/>
+        <dl_setting var="spg_search_forward_speed" min="0" step="0.02" max="0.6" unit="m/s"/>
+        <dl_setting var="spg_center_forward_speed" min="0" step="0.02" max="0.8" unit="m/s"/>
+        <dl_setting var="spg_center_confirm_time" min="0" step="0.05" max="2.0" unit="s"/>
+        <dl_setting var="spg_vertical_gain" min="0" step="0.05" max="3.0"/>
+        <dl_setting var="spg_max_vertical_step" min="0" step="0.05" max="1.0" unit="m"/>
+        <dl_setting var="spg_search_vertical_rate" min="0" step="0.02" max="1.0" unit="m/s"/>
+        <dl_setting var="spg_search_min_altitude" min="0.2" step="0.05" max="3.0" unit="m"/>
+        <dl_setting var="spg_search_max_altitude" min="0.3" step="0.05" max="4.0" unit="m"/>
+        <dl_setting var="spg_detection_timeout" min="0.1" step="0.05" max="2.0" unit="s"/>
+        <dl_setting var="spg_gate_pass_distance" min="0.2" step="0.1" max="3.0" unit="m"/>
+        <dl_setting var="spg_gate_center_tolerance" min="0.05" step="0.05" max="1.0" unit="m"/>
+        <dl_setting var="spg_gate_vertical_tolerance" min="0.05" step="0.01" max="1.0" unit="m"/>
+        <dl_setting var="spg_pass_through_time" min="0.2" step="0.1" max="3.0" unit="s"/>
+        <dl_setting var="spg_min_guided_altitude" min="0.2" step="0.05" max="2.0" unit="m"/>
+        <dl_setting var="spg_camera_delay_comp_s" min="0.0" step="0.01" max="0.6" unit="s"/>
+        <dl_setting var="spg_max_prediction_horizon_s" min="0.0" step="0.01" max="0.8" unit="s"/>
+        <dl_setting var="spg_max_relative_velocity" min="0.5" step="0.1" max="8.0" unit="m/s"/>
+      </dl_settings>
+    </dl_settings>
+  </settings>
+
+  <dep>
+    <depends>cv_detect_gate</depends>
+  </dep>
+
+  <header>
+    <file name="square_passer_guided.h"/>
+  </header>
+
+  <init fun="square_passer_guided_init()"/>
+  <periodic fun="square_passer_guided_periodic()" freq="4"/>
+
+  <makefile target="ap|nps">
+    <file name="square_passer_guided.c"/>
+  </makefile>
+</module>

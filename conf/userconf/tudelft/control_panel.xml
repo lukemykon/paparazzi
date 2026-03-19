@@ -207,13 +207,11 @@
         <arg flag="-udp"/>
       </program>
       <program name="Server"/>
-      <program name="GCS">
-        <arg flag="-speech"/>
-      </program>
+      <program name="GCS"/>
       <program name="Joystick">
         <arg flag="-ac" constant="@AIRCRAFT"/>
         <arg flag="hobbyking.xml"/>
-        <arg flag="-d 0"/>
+        <arg flag="-id" constant="0"/>
       </program>
       <program name="NatNet3">
         <arg flag="-ac 9999" constant="@AC_ID"/>
@@ -414,7 +412,6 @@
         <arg flag="-n"/>
       </program>
       <program name="GCS">
-        <arg flag="-speech"/>
         <arg flag="-maximize"/>
         <arg flag="-center_ac"/>
         <arg flag="-mercator"/>
@@ -437,7 +434,6 @@
         <arg flag="-n"/>
       </program>
       <program name="GCS">
-        <arg flag="-speech"/>
         <arg flag="-maximize"/>
         <arg flag="-center_ac"/>
         <arg flag="-mercator"/>
@@ -449,7 +445,7 @@
       <program name="Joystick">
         <arg flag="-ac" constant="@AIRCRAFT"/>
         <arg flag="hobbyking.xml"/>
-        <arg flag="-d 0"/>
+        <arg flag="-id" constant="0"/>
       </program>
       <program name="Gazebo"/>
     </session>

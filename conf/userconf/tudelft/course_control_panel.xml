@@ -17,25 +17,32 @@
       <program name="Server">
         <arg flag="-n"/>
       </program>
-      <program name="PprzGCS">
-        <arg flag="--speech"/>
-      </program>
-      <program name="Joystick" command="sw/ground_segment/joystick/input2ivy">
+      <program name="PprzGCS"/>
+      <!--program name="Joystick" command="sw/ground_segment/joystick/input2ivy">
         <arg flag="-ac" constant="@AIRCRAFT"/>
         <arg flag="sm600.xml"/>
-        <arg flag="-d 0"/>
-      </program>
+        <arg flag="-d"/>
+        <arg flag="0"/>
+      </program-->
       <program name="Gazebo"/>
-      <program name="RtpViewer">
+      <!--program name="RtpViewer">
         <arg flag="-s" constant="1"/>
         <arg flag="-r" constant="3"/>
-      </program>
-      <program name="GST" command="/usr/bin/gst-launch-1.0">
+      </program-->
+      <!--program name="GST" command="/usr/bin/gst-launch-1.0">
         <arg flag="udpsrc"/>
         <arg flag="port=5000"/>
         <arg flag="caps=application/x-rtp,payload=26"/>
-        <arg flag="! rtpjpegdepay ! jpegdec ! videoflip method=counterclockwise ! autovideosink"/>
-      </program>
+        <arg flag="!"/>
+        <arg flag="rtpjpegdepay"/>
+        <arg flag="!"/>
+        <arg flag="jpegdec"/>
+        <arg flag="!"/>
+        <arg flag="videoflip"/>
+        <arg flag="method=counterclockwise"/>
+        <arg flag="!"/>
+        <arg flag="autovideosink"/>
+      </program-->
       <program name="VLC">
         <arg flag="./sw/tools/rtp_viewer/rtp_5000.sdp"/>
       </program>
@@ -59,36 +66,43 @@
         <arg flag="--ac_id" constant="@AC_ID"/>
       </program>
       <program name="Server"/>
-      <program name="PprzGCS">
-        <arg flag="--speech"/>
-      </program>
-      <program name="Joystick" command="sw/ground_segment/joystick/input2ivy">
+      <program name="PprzGCS"/>
+      <!--program name="Joystick" command="sw/ground_segment/joystick/input2ivy">
         <arg flag="-ac" constant="@AIRCRAFT"/>
         <arg flag="sm600.xml"/>
-        <arg flag="-d 0"/>
-      </program>
+        <arg flag="-d"/>
+        <arg flag="0"/>
+      </program-->
       <!--program name="NatNet3">
         <arg flag="-ac 9999" constant="@AC_ID"/>
         <arg flag="-xa" constant="57"/>
         <arg flag="-an" constant="far"/>
         <arg flag="-le" constant="far"/>
       </program-->
-      <program name="RtpViewer">
+      <!--program name="RtpViewer">
         <arg flag="-s" constant="1"/>
         <arg flag="-r" constant="3"/>
-      </program>
+      </program-->
       <program name="VLC">
         <arg flag="./sw/tools/rtp_viewer/rtp_5000.sdp"/>
       </program>
       <program name="VLC">
         <arg flag="./sw/tools/rtp_viewer/rtp_6000.sdp"/>
       </program>
-      <program name="GST" command="/usr/bin/gst-launch-1.0">
+      <!--program name="GST" command="/usr/bin/gst-launch-1.0">
         <arg flag="udpsrc"/>
         <arg flag="port=5000"/>
         <arg flag="caps=application/x-rtp,payload=26"/>
-        <arg flag="! rtpjpegdepay ! jpegdec ! videoflip method=counterclockwise ! autovideosink"/>
-      </program>
+        <arg flag="!"/>
+        <arg flag="rtpjpegdepay"/>
+        <arg flag="!"/>
+        <arg flag="jpegdec"/>
+        <arg flag="!"/>
+        <arg flag="videoflip"/>
+        <arg flag="method=counterclockwise"/>
+        <arg flag="!"/>
+        <arg flag="autovideosink"/>
+      </program-->
     </session>
     <session name="Distance Counter">
       <program name="Optitrack Distance Counter"/>

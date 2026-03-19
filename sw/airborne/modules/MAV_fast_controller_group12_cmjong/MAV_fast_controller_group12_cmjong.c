@@ -26,6 +26,7 @@
 #include <stdio.h>
 
 #include "generated/flight_plan.h"
+#include "modules/square_passer/square_passer_guided.h"
 
 #define MAV_FAST_CONTROLLER_VERBOSE TRUE
 
@@ -108,6 +109,11 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
 {
   // only evaluate our state machine if we are flying
   if(!autopilot_in_flight()){ return; }
+
+  if (square_passer_guided_is_enabled()) {
+    navigation_state = SAFE_AND_WAIT;
+    return;
+  }
   
   VERBOSE_PRINT("State: %d | Losses L:%u M:%u R:%u\n", navigation_state, Loss_image.left, Loss_image.middle, Loss_image.right);
 

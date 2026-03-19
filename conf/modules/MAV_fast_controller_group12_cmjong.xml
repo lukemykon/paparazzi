@@ -12,7 +12,7 @@
   </doc>
 
   <dep>
-    <depends>MAV_cv_detect_group12_cmjong</depends>
+    <depends>MAV_cv_detect_group12_cmjong,square_passer_guided</depends>
   </dep>
 
   <header>

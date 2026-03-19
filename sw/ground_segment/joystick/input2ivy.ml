@@ -600,6 +600,35 @@ let execute_kb_action = fun actions conditions ->
   true
 
 
+let split_compound_arg = fun arg ->
+  List.filter (fun token -> token <> "")
+    (List.map String.trim (String.split_on_char ' ' arg))
+
+let split_equals_arg = fun arg ->
+  try
+    let idx = String.index arg '=' in
+    let key = String.sub arg 0 idx in
+    let value = String.sub arg (idx + 1) (String.length arg - idx - 1) in
+    if key <> "" && value <> "" then [key; value] else [arg]
+  with
+      Not_found -> [arg]
+
+let normalize_cli_arg = fun arg ->
+  if String.length arg > 0 && arg.[0] = '-' then begin
+    match split_compound_arg arg with
+        _ :: _ :: _ as tokens -> tokens
+      | _ -> split_equals_arg arg
+  end else
+    [arg]
+
+let normalize_argv = fun argv ->
+  let args = ref [argv.(0)] in
+  for i = 1 to Array.length argv - 1 do
+    args := !args @ normalize_cli_arg argv.(i)
+  done;
+  Array.of_list !args
+
+
 
 (************************************* MAIN **********************************)
 let () =
@@ -620,7 +649,8 @@ let () =
     ]
   and usage_msg = "Usage: " in
 
-  Arg.parse speclist anon_fun usage_msg;
+  let argv = normalize_argv Sys.argv in
+  Arg.parse_argv ~current:(ref 0) argv speclist anon_fun usage_msg;
 
   if !xml_descr = "" then begin
     Arg.usage speclist usage_msg;
