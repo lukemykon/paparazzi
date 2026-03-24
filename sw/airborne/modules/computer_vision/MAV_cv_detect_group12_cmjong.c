@@ -167,12 +167,12 @@ static struct image_t *object_detector(struct image_t *img, uint8_t camera_id)
   bool     of_ran = false;
 
   // --- Stage 0: crop to horizontal obstacle band (removes floor/ceiling) ---
-  crop_image_center(img, crop_w_frac, crop_h_frac);
+  crop_image_center(img, crop_h_frac, crop_w_frac);
 
   // --- Stage 1: cheap color detection on cropped band ---
   uint16_t orange_count = color_detection(img, orange_lum_min, orange_lum_max,
                                           orange_cb_min, orange_cb_max,
-                                          orange_cr_min, orange_cr_max, false);
+                                          orange_cr_min, orange_cr_max, cod_draw);
   uint16_t blue_count = color_detection(img, blue_lum_min, blue_lum_max,
                                         blue_cb_min, blue_cb_max,
                                         blue_cr_min, blue_cr_max, false);

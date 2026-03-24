@@ -3,7 +3,7 @@
 // Scan-band configuration
 #define SCAN_NUM_LINES   5   // number of horizontal scan bands
 #define SCAN_THICKNESS   1   // width of each band in pixels
-#define SCAN_SPACING     20  // gap between band edges in pixels
+#define SCAN_SPACING     10  // gap between band edges in pixels
 
 static void draw_horizontal_line(uint8_t *buffer, uint16_t img_w, uint16_t img_h,
                                 uint16_t x_col, uint8_t y_val, uint8_t u_val, uint8_t v_val)
