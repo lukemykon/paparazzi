@@ -19,27 +19,19 @@
       <define name="ORANGE_OBJECT_DETECTOR_CR_MIN" value="150"/>
       <define name="ORANGE_OBJECT_DETECTOR_CR_MAX" value="190"/>
 
-             <!-- User target: Y=3, U=81, V=-50 with +-30 (signed U/V). -->
-           <define name="BLUE_OBJECT_DETECTOR_SIGNED_CENTER" value="1"/>
-           <define name="BLUE_OBJECT_DETECTOR_Y_CENTER" value="3"/>
-           <define name="BLUE_OBJECT_DETECTOR_U_CENTER" value="81"/>
-           <define name="BLUE_OBJECT_DETECTOR_V_CENTER" value="-50"/>
-           <define name="BLUE_OBJECT_DETECTOR_Y_TOL" value="30"/>
-           <define name="BLUE_OBJECT_DETECTOR_U_TOL" value="30"/>
-           <define name="BLUE_OBJECT_DETECTOR_V_TOL" value="30"/>
-       <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="0"/>
-           <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="33"/>
-           <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="179"/>
-           <define name="BLUE_OBJECT_DETECTOR_CB_MAX" value="239"/>
-           <define name="BLUE_OBJECT_DETECTOR_CR_MIN" value="48"/>
-           <define name="BLUE_OBJECT_DETECTOR_CR_MAX" value="108"/>
+      <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="0"/>
+      <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="33"/>
+      <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="179"/>
+      <define name="BLUE_OBJECT_DETECTOR_CB_MAX" value="239"/>
+      <define name="BLUE_OBJECT_DETECTOR_CR_MIN" value="48"/>
+      <define name="BLUE_OBJECT_DETECTOR_CR_MAX" value="108"/>
 
       <define name="GREEN_OBJECT_DETECTOR_LUM_MIN" value="18"/>
       <define name="GREEN_OBJECT_DETECTOR_LUM_MAX" value="170"/>
       <define name="GREEN_OBJECT_DETECTOR_CB_MIN" value="70"/>
       <define name="GREEN_OBJECT_DETECTOR_CB_MAX" value="145"/>
       <define name="GREEN_OBJECT_DETECTOR_CR_MIN" value="20"/>
-      <define name="GREEN_OBJECT_DETECTOR_CR_MAX" value="120"/>
+      <define name="GREEN_OBJECT_DETECTOR_CR_MAX" value="160"/>
 
       <module name="ahrs" type="int_cmpl_quat">
         <configure name="USE_MAGNETOMETER" value="FALSE"/>
@@ -60,13 +52,6 @@
       <define name="ORANGE_OBJECT_DETECTOR_CR_MIN" value="134"/>
       <define name="ORANGE_OBJECT_DETECTOR_CR_MAX" value="249"/>
 
-      <define name="BLUE_OBJECT_DETECTOR_SIGNED_CENTER" value="1"/>
-      <define name="BLUE_OBJECT_DETECTOR_Y_CENTER" value="3"/>
-      <define name="BLUE_OBJECT_DETECTOR_U_CENTER" value="81"/>
-      <define name="BLUE_OBJECT_DETECTOR_V_CENTER" value="-50"/>
-      <define name="BLUE_OBJECT_DETECTOR_Y_TOL" value="30"/>
-      <define name="BLUE_OBJECT_DETECTOR_U_TOL" value="30"/>
-      <define name="BLUE_OBJECT_DETECTOR_V_TOL" value="30"/>
       <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="0"/>
       <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="33"/>
       <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="179"/>

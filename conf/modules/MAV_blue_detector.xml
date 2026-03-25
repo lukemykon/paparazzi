@@ -48,7 +48,6 @@
     <define name="BLUE_DETECTOR_FORWARD_SPEED" value="0.30" description="Forward body velocity [m/s] when path is clear"/>
     <define name="BLUE_DETECTOR_TURN_SPEED" value="0.30" description="Lateral body velocity [m/s] while turning"/>
     <define name="BLUE_DETECTOR_STRAIGHT_SAFE_PCT" value="40.0" description="Go straight if center blue load is below this percent"/>
-    <define name="BLUE_DETECTOR_STRAIGHT_BLOCKED_PCT" value="60.0" description="Reserved threshold for heavy center blockage"/>
   </doc>
 
   <dep>

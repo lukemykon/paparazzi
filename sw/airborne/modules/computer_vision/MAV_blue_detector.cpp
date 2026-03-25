@@ -79,10 +79,6 @@ extern "C" {
 #define BLUE_DETECTOR_STRAIGHT_SAFE_PCT 40.0f
 #endif
 
-#ifndef BLUE_DETECTOR_STRAIGHT_BLOCKED_PCT
-#define BLUE_DETECTOR_STRAIGHT_BLOCKED_PCT 60.0f
-#endif
-
 /* YUV mask color for matched blue pixels. */
 #ifndef BLUE_DETECTOR_MASK_Y
 #define BLUE_DETECTOR_MASK_Y 110U
@@ -176,10 +172,12 @@ static inline bool is_blue_yuv(uint8_t y, uint8_t u, uint8_t v)
           v_signed >= BLUE_DETECTOR_V_MIN && v_signed <= BLUE_DETECTOR_V_MAX);
 }
 
+#if BLUE_DETECTOR_ENABLE_STANDALONE_CONTROL
 static bool is_drone_near_ground(void)
 {
   return stateGetPositionEnu_f()->z <= BLUE_DETECTOR_GROUND_ALT_M;
 }
+#endif
 
 static void detect_blue_top_half(struct image_t *img, bool draw_mask, struct bd_zone_scores_t *out)
 {

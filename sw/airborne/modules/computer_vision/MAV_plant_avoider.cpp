@@ -15,18 +15,13 @@
 extern "C" {
 #include "modules/computer_vision/cv.h"
 #include "modules/computer_vision/lib/vision/image.h"
-#include "modules/computer_vision/MAV_cv_color_group12_cmjong.h"
 #include "firmwares/rotorcraft/guidance/guidance_h.h"
 #include "firmwares/rotorcraft/navigation.h"
-#include "modules/datalink/downlink.h"
-#include "modules/core/abi.h"
 #include "generated/airframe.h"
 #include "state.h"
 }
 
-#include <math.h>
 #include <pthread.h>
-#include <stdio.h>
 #include <string.h>
 
 #ifndef PLANT_AVOIDER_CAMERA
@@ -35,23 +30,6 @@ extern "C" {
 
 #ifndef PLANT_AVOIDER_FPS
 #define PLANT_AVOIDER_FPS 4
-#endif
-
-/* Temporary debug: print sampled YUV pixel values from camera stream. */
-#ifndef PLANT_AVOIDER_DEBUG_YUV
-#define PLANT_AVOIDER_DEBUG_YUV 1
-#endif
-
-#ifndef PLANT_AVOIDER_DEBUG_YUV_PERIOD_FRAMES
-#define PLANT_AVOIDER_DEBUG_YUV_PERIOD_FRAMES 10U
-#endif
-
-#ifndef PLANT_AVOIDER_DEBUG_YUV_TO_GCS
-#define PLANT_AVOIDER_DEBUG_YUV_TO_GCS 1
-#endif
-
-#ifndef PLANT_AVOIDER_DEBUG_YUV_STDOUT
-#define PLANT_AVOIDER_DEBUG_YUV_STDOUT 0
 #endif
 
 /* In NAV mode, route guidance can overwrite speed setpoints.
@@ -68,18 +46,6 @@ extern "C" {
 /* Keep camera processing/highlighting active even if control is disabled. */
 #ifndef PLANT_AVOIDER_ENABLE_VISION_CALLBACK
 #define PLANT_AVOIDER_ENABLE_VISION_CALLBACK 1
-#endif
-
-#ifndef MAV_cmjong_VISUAL_DETECTION_ID
-#define MAV_cmjong_VISUAL_DETECTION_ID ABI_BROADCAST
-#endif
-
-#ifndef PLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER
-#define PLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER 1
-#endif
-
-#ifndef PLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV
-#define PLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV 1
 #endif
 
 #ifndef PLANT_AVOIDER_SHOW_MASK
@@ -109,10 +75,6 @@ extern "C" {
 #define PLANT_AVOIDER_TURN_SPEED 0.3f
 #endif
 
-#ifndef PLANT_AVOIDER_STRAIGHT_BIAS
-#define PLANT_AVOIDER_STRAIGHT_BIAS 0.10f
-#endif
-
 /* Gazebo front camera is typically not rotated; set to 1 only for rotated feeds (e.g. some Bebop setups). */
 #ifndef PLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF
 #define PLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF 1
@@ -123,14 +85,6 @@ extern "C" {
 #define PLANT_AVOIDER_USE_HALF_FOV 1
 #endif
 
-#ifndef PLANT_AVOIDER_STRAIGHT_SIDE_BONUS
-#define PLANT_AVOIDER_STRAIGHT_SIDE_BONUS 0.05f
-#endif
-
-#ifndef PLANT_AVOIDER_RIGHT_TIE_BONUS
-#define PLANT_AVOIDER_RIGHT_TIE_BONUS 0.02f
-#endif
-
 /*
  * Control rule based on straight-sector load percentage (resolution independent):
  * - If straight load is below safe percent, fly straight.
@@ -138,11 +92,6 @@ extern "C" {
  */
 #ifndef PLANT_AVOIDER_STRAIGHT_SAFE_PCT
 #define PLANT_AVOIDER_STRAIGHT_SAFE_PCT 40.0f
-#endif
-
-/* Emergency behavior when center is heavily blocked: stop forward motion while turning. */
-#ifndef PLANT_AVOIDER_STRAIGHT_BLOCKED_PCT
-#define PLANT_AVOIDER_STRAIGHT_BLOCKED_PCT 60.0f
 #endif
 
 /* Temporary calibration target: Y=90 U=100 V=124 */
@@ -186,7 +135,6 @@ extern "C" {
 #define PLANT_AVOIDER_V_MAX (PLANT_AVOIDER_V_CENTER + PLANT_AVOIDER_V_TOL)
 #endif
 
-float pa_straight_bias = PLANT_AVOIDER_STRAIGHT_BIAS;
 float pa_forward_speed = PLANT_AVOIDER_FORWARD_SPEED;
 float pa_turn_speed = PLANT_AVOIDER_TURN_SPEED;
 
@@ -207,34 +155,6 @@ struct pa_zone_scores_t {
 
 static struct pa_zone_scores_t g_scores;
 static pthread_mutex_t g_mutex;
-static uint32_t g_debug_yuv_frame_count = 0U;
-
-static bool yuv422_get_pixel(const struct image_t *img, uint16_t x, uint16_t y,
-                             uint8_t *y_out, uint8_t *u_out, uint8_t *v_out)
-{
-  if (!img || !img->buf || img->type != IMAGE_YUV422) {
-    return false;
-  }
-  if (x >= img->w || y >= img->h) {
-    return false;
-  }
-
-  uint8_t *buf = (uint8_t *)img->buf;
-  const uint32_t row_base = (uint32_t)y * 2U * (uint32_t)img->w;
-  const uint32_t base = row_base + (uint32_t)(2U * x);
-
-  if ((x & 1U) == 0U) {
-    *u_out = buf[base];
-    *y_out = buf[base + 1U];
-    *v_out = buf[base + 2U];
-  } else {
-    *u_out = buf[base - 2U];
-    *y_out = buf[base + 1U];
-    *v_out = buf[base];
-  }
-
-  return true;
-}
 
 static inline bool is_green_yuv(uint8_t y, uint8_t u, uint8_t v)
 {
@@ -243,10 +163,12 @@ static inline bool is_green_yuv(uint8_t y, uint8_t u, uint8_t v)
           v >= PLANT_AVOIDER_V_MIN && v <= PLANT_AVOIDER_V_MAX);
 }
 
+#if PLANT_AVOIDER_ENABLE_STANDALONE_CONTROL
 static bool is_drone_near_ground(void)
 {
   return stateGetPositionEnu_f()->z <= PLANT_AVOIDER_GROUND_ALT_M;
 }
+#endif
 
 static void detect_green_top_half(struct image_t *img, bool draw_mask, struct pa_zone_scores_t *out)
 {
@@ -362,41 +284,6 @@ static struct image_t *plant_avoider_func(struct image_t *img, uint8_t camera_id
   /* Debug behavior: always run detection/highlighting, even on ground. */
   detect_green_top_half(img, true, &s);
 
-#if PLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER
-  const WeightedLoss fused_loss = compute_weighted_color_losses(img, PLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV != 0);
-  AbiSendMsgVISUAL_DETECTION(MAV_cmjong_VISUAL_DETECTION_ID,
-                             (int16_t)fused_loss.left,
-                             (int16_t)fused_loss.middle,
-                             (int16_t)fused_loss.right,
-                             0,
-                             0,
-                             0);
-#endif
-
-#if PLANT_AVOIDER_DEBUG_YUV
-  uint8_t py, pu, pv;
-  const uint16_t sx = (uint16_t)(img->w / 2U);
-  const uint16_t sy = (uint16_t)(img->h / 2U);
-  if (yuv422_get_pixel(img, sx, sy, &py, &pu, &pv)) {
-    if ((g_debug_yuv_frame_count % PLANT_AVOIDER_DEBUG_YUV_PERIOD_FRAMES) == 0U) {
-#if PLANT_AVOIDER_DEBUG_YUV_TO_GCS
-      float yuv_msg[5];
-      yuv_msg[0] = (float)sx;
-      yuv_msg[1] = (float)sy;
-      yuv_msg[2] = (float)py;
-      yuv_msg[3] = (float)pu;
-      yuv_msg[4] = (float)pv;
-      DOWNLINK_SEND_PAYLOAD_FLOAT(DefaultChannel, DefaultDevice, 5, yuv_msg);
-#endif
-#if PLANT_AVOIDER_DEBUG_YUV_STDOUT
-      printf("[plant_avoider] sample pixel x=%u y=%u -> Y=%u U=%u V=%u\n",
-             (unsigned)sx, (unsigned)sy, (unsigned)py, (unsigned)pu, (unsigned)pv);
-#endif
-    }
-    g_debug_yuv_frame_count++;
-  }
-#endif
-
   pthread_mutex_lock(&g_mutex);
   g_scores = s;
   pthread_mutex_unlock(&g_mutex);
@@ -409,7 +296,6 @@ extern "C" void plant_avoider_init(void)
   memset(&g_scores, 0, sizeof(g_scores));
   pthread_mutex_init(&g_mutex, NULL);
 
-  pa_straight_bias = PLANT_AVOIDER_STRAIGHT_BIAS;
   pa_forward_speed = PLANT_AVOIDER_FORWARD_SPEED;
   pa_turn_speed = PLANT_AVOIDER_TURN_SPEED;
 

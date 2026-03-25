@@ -28,6 +28,4 @@ struct column_counts color_detection_columns(struct image_t *img,
                                              uint8_t cr_min,  uint8_t cr_max,
                                              bool draw);
 
-WeightedLoss compute_weighted_color_losses(struct image_t *img, bool draw_blue_mask);
-
 #endif

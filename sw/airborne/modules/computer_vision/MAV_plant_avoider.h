@@ -8,7 +8,6 @@
 extern "C" {
 #endif
 
-extern float pa_straight_bias;
 extern float pa_forward_speed;
 extern float pa_turn_speed;
 
