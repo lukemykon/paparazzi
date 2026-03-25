@@ -58,7 +58,7 @@ enum navigation_state_t {
 };
 
 
-#define AVOIDANCE_TURN_DEGREES 10.f
+#define AVOIDANCE_TURN_DEGREES 5.f
 #define MOVE_DISTANCE       0.5f
 #define AVOIDANCE_TURN_DEGREES_OutOfBound 5.f
 #define OF_AVOIDANCE_TURN_DEGREES 120.f
@@ -228,35 +228,38 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
       break;
     }
 
-    case TURN_AVOID:
-      if (pending_turn_from_of && of_turn_remaining > 0.f) {
-        // OF-triggered turn: execute the full turn incrementally after braking.
-        float step = (of_turn_remaining < AVOIDANCE_TURN_DEGREES)
-                     ? of_turn_remaining : AVOIDANCE_TURN_DEGREES;
-        rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * step);
-        of_turn_remaining -= step;
-        if (of_turn_remaining <= 0.f) {
-          of_turn_remaining = 0.f;
-          pending_turn_from_of = false;
-          pending_turn_dir = 1;
-          luke_of_request_reset = true;
-          navigation_state = SAFE_AND_WAIT;
-        }
-      } else if (of_obstacle_ahead) {
-        // New OF detection: start a large turn using a recent color direction when available.
-        pending_turn_from_of = true;
-        pending_turn_dir = choose_of_turn_dir(now);
-        of_turn_remaining = OF_AVOIDANCE_TURN_DEGREES;
-      } else if (detected_local > 0) {
-        // Color-triggered: center/tie defaults right, left stays left.
+  case TURN_AVOID:
+    // Only process NEW of_obstacle_ahead if we're NOT in the middle of an OF turn
+    bool fresh_of = of_obstacle_ahead && !pending_turn_from_of;
+    
+    if (pending_turn_from_of && of_turn_remaining > 0.f) {
+      // Mid OF-turn — complete it. Ignore fresh OF signals.
+      float step = (of_turn_remaining < AVOIDANCE_TURN_DEGREES)
+                  ? of_turn_remaining : AVOIDANCE_TURN_DEGREES;
+      rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * step);
+      of_turn_remaining -= step;
+      if (of_turn_remaining <= 0.f) {
+        of_turn_remaining = 0.f;
         pending_turn_from_of = false;
-        pending_turn_dir = choose_color_turn_dir();
-        rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * AVOIDANCE_TURN_DEGREES);
-      } else {
         pending_turn_dir = 1;
+        luke_of_request_reset = true;
         navigation_state = SAFE_AND_WAIT;
       }
-      break;
+    } else if (fresh_of) {
+      // Only start a NEW OF turn if we just finished the last one
+      pending_turn_from_of = true;
+      pending_turn_dir = choose_of_turn_dir(now);
+      of_turn_remaining = OF_AVOIDANCE_TURN_DEGREES;
+    } else if (detected_local > 0) {
+      // Color-triggered turn (not interrupted by OF)
+      pending_turn_from_of = false;
+      pending_turn_dir = choose_color_turn_dir();
+      rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * AVOIDANCE_TURN_DEGREES);
+    } else {
+      pending_turn_dir = 1;
+      navigation_state = SAFE_AND_WAIT;
+    }
+    break;
 
 
     case MOVE_FORWARD_WITH_FIXED_DISTANCE:

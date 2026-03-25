@@ -3,7 +3,7 @@
 // Scan-band configuration
 #define SCAN_NUM_LINES   5   // number of horizontal scan bands
 #define SCAN_THICKNESS   1   // width of each band in pixels
-#define SCAN_SPACING     20  // gap between band edges in pixels
+#define SCAN_SPACING     15  // gap between band edges in pixels
 
 static void draw_horizontal_line(uint8_t *buffer, uint16_t img_w, uint16_t img_h,
                                 uint16_t x_col, uint8_t y_val, uint8_t u_val, uint8_t v_val)
@@ -189,6 +189,12 @@ struct column_counts color_detection_columns(struct image_t *img,
   }
 
   if (draw) {
+
+    for (uint8_t i = 0; i < SCAN_NUM_LINES; i++) {
+      if (bs[i] >= scan_w || be[i] <= bs[i]) continue;
+      draw_horizontal_line(buffer, w, h, bs[i], 235, 128, 128);      // band start
+      draw_horizontal_line(buffer, w, h, be[i] - 1u, 235, 128, 128); // band end
+    }
     // Draw column boundary lines (horizontal lines in buffer = vertical in physical scene)
     draw_row_line(buffer, w, h, left_end,     0, 200, 128);   // left|center boundary (blue-ish)
     draw_row_line(buffer, w, h, center_start, 0, 200, 128);   // center overlap start
