@@ -188,6 +188,9 @@ ifneq ($(PAPARAZZI_QT_GEN),)
 	$(Q)./sw/tools/qt_project.py $(AIRCRAFT) $(CONF_XML) $(SRCS_LIST)
 endif
 
+$(GENERATORS)/gen_aircraft.out:
+	$(MAKE) generators
+
 %.ac_h : $(GENERATORS)/gen_aircraft.out
 	$(Q)if (expr "$(AIRCRAFT)") > /dev/null; then : ; else echo "AIRCRAFT undefined: type 'make AIRCRAFT=AircraftName ...'"; exit 1; fi
 	@echo "#######################################"

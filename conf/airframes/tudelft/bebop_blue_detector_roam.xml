@@ -1,94 +1,22 @@
 <!DOCTYPE airframe SYSTEM "../airframe.dtd">
 
-<airframe name="bebop_gate_detection">
-  <description>MAVLAB Course TU Delft 2023 - Gate detection only profile
+<airframe name="bebop_blue_detector_roam">
+  <description>Standalone blue detector roaming profile for TU Delft simulation
   </description>
-
 
   <firmware name="rotorcraft">
     <target name="ap" board="bebop">
       <define name="VIDEO_CAPTURE_PATH" value="/data/ftp/internal_000/images"/>
       <define name="LOGGER_FILE_PATH" value="/data/ftp/internal_000/log"/>
       <define name="MT9V117_TARGET_FPS" value="20"/>
-      <define name="CAMERA_ROTATED_90DEG_RIGHT" value="TRUE"/>
-      <define name="DETECT_GATE_USE_EDGE_MODE" value="0"/>
-      <define name="DETECT_GATE_Y_MIN" value="100"/>
-      <define name="DETECT_GATE_Y_MAX" value="255"/>
-      <define name="DETECT_GATE_U_MIN" value="0"/>
-      <define name="DETECT_GATE_U_MAX" value="120"/>
-      <define name="DETECT_GATE_V_MIN" value="120"/>
-      <define name="DETECT_GATE_V_MAX" value="220"/>
       
-      <!-- Detect orange -->
-      <define name="ORANGE_OBJECT_DETECTOR_LUM_MIN" value="30"/>
-      <define name="ORANGE_OBJECT_DETECTOR_LUM_MAX" value="190"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CB_MIN" value="70"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CB_MAX" value="130"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CR_MIN" value="150"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CR_MAX" value="190"/>
-
-      <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="20"/>
-      <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="204"/>
-      <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="63"/>
-      <define name="BLUE_OBJECT_DETECTOR_CB_MAX" value="141"/>
-      <define name="BLUE_OBJECT_DETECTOR_CR_MIN" value="146"/>
-      <define name="BLUE_OBJECT_DETECTOR_CR_MAX" value="200"/>
-
-      <define name="GREEN_OBJECT_DETECTOR_LUM_MIN" value="18"/>
-      <define name="GREEN_OBJECT_DETECTOR_LUM_MAX" value="170"/>
-      <define name="GREEN_OBJECT_DETECTOR_CB_MIN" value="70"/>
-      <define name="GREEN_OBJECT_DETECTOR_CB_MAX" value="145"/>
-      <define name="GREEN_OBJECT_DETECTOR_CR_MIN" value="20"/>
-      <define name="GREEN_OBJECT_DETECTOR_CR_MAX" value="120"/>
-
-      <module name="ahrs" type="int_cmpl_quat">
-        <configure name="USE_MAGNETOMETER" value="FALSE"/>
-        <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
-      </module>
-
     </target>
     <target name="nps" board="pc">
       <module name="fdm" type="gazebo"/>
       <define name="VIDEO_CAPTURE_PATH" value="/tmp/paparazzi/images"/>
       <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/>
-      <define name="CAMERA_ROTATED_90DEG_RIGHT" value="TRUE"/>
-      <define name="DETECT_GATE_USE_EDGE_MODE" value="1"/>
-      <define name="DETECT_GATE_Y_MIN" value="80"/>
-      <define name="DETECT_GATE_Y_MAX" value="255"/>
-      <define name="DETECT_GATE_U_MIN" value="0"/>
-      <define name="DETECT_GATE_U_MAX" value="130"/>
-      <define name="DETECT_GATE_V_MIN" value="110"/>
-      <define name="DETECT_GATE_V_MAX" value="230"/>
       
-      <!-- Detect orange -->
-      <define name="ORANGE_OBJECT_DETECTOR_LUM_MIN" value="41"/>
-      <define name="ORANGE_OBJECT_DETECTOR_LUM_MAX" value="183"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CB_MIN" value="53"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CB_MAX" value="121"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CR_MIN" value="134"/>
-      <define name="ORANGE_OBJECT_DETECTOR_CR_MAX" value="249"/>
-
-      <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="20"/>
-      <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="200"/>
-      <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="150"/>
-      <define name="BLUE_OBJECT_DETECTOR_CB_MAX" value="255"/>
-      <define name="BLUE_OBJECT_DETECTOR_CR_MIN" value="0"/>
-      <define name="BLUE_OBJECT_DETECTOR_CR_MAX" value="120"/>
-
-      <define name="GREEN_OBJECT_DETECTOR_LUM_MIN" value="18"/>
-      <define name="GREEN_OBJECT_DETECTOR_LUM_MAX" value="170"/>
-      <define name="GREEN_OBJECT_DETECTOR_CB_MIN" value="70"/>
-      <define name="GREEN_OBJECT_DETECTOR_CB_MAX" value="145"/>
-      <define name="GREEN_OBJECT_DETECTOR_CR_MIN" value="20"/>
-      <define name="GREEN_OBJECT_DETECTOR_CR_MAX" value="120"/>
-
-      <module name="ahrs" type="float_mlkf"> <!-- was int_cmpl_quat  -->
-        <configure name="USE_MAGNETOMETER" value="FALSE"/>
-        <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
-      </module>
     </target>
-    
-    <define name="ARRIVED_AT_WAYPOINT" value="0.3"/><!-- Detect arrival at waypoint when within 0.3m -->
 
   <!-- Subsystem section -->
     <module name="telemetry" type="transparent_udp"/>
@@ -99,6 +27,10 @@
     <module name="gps" type="datalink"/>
     <module name="stabilization" type="indi_simple"/>
     <module name="stabilization" type="rate_indi"/>
+    <module name="ahrs" type="int_cmpl_quat">
+      <configure name="USE_MAGNETOMETER" value="FALSE"/>
+      <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
+    </module>
     <module name="ins" type="extended"/>
 
     <module name="logger_file"/>
@@ -112,25 +44,16 @@
       <define name="VIDEO_CAPTURE_CAMERA" value="front_camera"/>
       <define name="VIDEO_CAPTURE_FPS" value="10"/>
     </module>
-    <!-- module name="cv_opencvdemo">
-      <define name="OPENCVDEMO_CAMERA" value="front_camera"/>
-      <define name="OPENCVDEMO_FPS" value="10"/>
-    </module -->
-    <module name="cv_detect_gate_gd">
-      <define name="DETECT_GATE_CAMERA" value="front_camera"/>
-      <define name="DETECT_GATE_FPS" value="10"/>
-      <define name="DETECT_GATE_DRAW_GATE" value="1"/>
-      <define name="DETECT_GATE_N_SAMPLES" value="5000"/>
-      <define name="DETECT_GATE_SIMPLIFIED_PNP" value="1"/>
-      <define name="DETECT_GATE_GATE_SIZE_M" value="1.08"/>
-      <define name="DETECT_GATE_MIN_GATE_QUALITY" value="0.08"/>
-      <define name="DETECT_GATE_MIN_N_SIDES" value="3"/>
-      <define name="DETECT_GATE_MIN_PIX_SIZE" value="40"/>
-      <define name="DETECT_GATE_EXCLUDE_PIXELS_TOP" value="25"/>
-      <define name="DETECT_GATE_EXCLUDE_PIXELS_BOTTOM" value="40"/>
-    </module>
-    <module name="gate_center_follower_gd">
-      <define name="GATE_CENTER_RELATIVE_LOCALIZATION_ID" value="DETECT_GATE_ABI_ID"/>
+    <module name="MAV_blue_detector">
+      <define name="BLUE_DETECTOR_CAMERA" value="front_camera"/>
+      <define name="BLUE_DETECTOR_FPS" value="4"/>
+      <define name="BLUE_DETECTOR_ENABLE_VISION_CALLBACK" value="1"/>
+      <define name="BLUE_DETECTOR_ENABLE_STANDALONE_CONTROL" value="1"/>
+      <define name="BLUE_DETECTOR_NAV_MODE_CONTROL" value="1"/>
+      <define name="BLUE_DETECTOR_SHOW_MASK" value="1"/>
+      <define name="BLUE_DETECTOR_FORWARD_SPEED" value="0.35"/>
+      <define name="BLUE_DETECTOR_TURN_SPEED" value="0.55"/>
+      <define name="BLUE_DETECTOR_STRAIGHT_SAFE_PCT" value="40.0"/>
     </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
@@ -168,20 +91,17 @@
     <set servo="BOTTOM_RIGHT" value="motor_mixing.commands[MOTOR_BACK_RIGHT]"/>
     <set servo="BOTTOM_LEFT" value="motor_mixing.commands[MOTOR_BACK_LEFT]"/>
   </command_laws>
-
+  
   <section name="BEBOP_FRONT_CAMERA" prefix="MT9F002_">
     <define name="OUTPUT_HEIGHT" value="520" />
     <define name="OUTPUT_WIDTH" value="240" />
     <define name="OFFSET_X" value="0.09" />
-    <define name="OFFSET_Y" value="0.00" />
     <define name="ZOOM" value="1.25"/>
     <define name="GAIN_GREEN1" value="10.0"/>
     <define name="GAIN_GREEN2" value="10.0"/>
     <define name="GAIN_BLUE" value="12.5"/>
     <define name="GAIN_RED" value="9.0"/>
     <define name="TARGET_EXPOSURE" value="30" />
-    <!--define name="OUTPUT_SCALER" value="0.25"/>
-    <define name="TARGET_FPS" value="20" /-->
   </section>
 
   <section name="AIR_DATA" prefix="AIR_DATA_">

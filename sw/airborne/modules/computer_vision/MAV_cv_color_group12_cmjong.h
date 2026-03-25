@@ -39,10 +39,18 @@ typedef struct {
   uint32_t right;
 } PixelCount;
 
+typedef struct {
+  uint16_t left;
+  uint16_t middle;
+  uint16_t right;
+} WeightedLoss;
+
 PixelCount color_detection(struct image_t *img,
                              uint8_t lum_min, uint8_t lum_max,
                              uint8_t cb_min,  uint8_t cb_max,
                              uint8_t cr_min,  uint8_t cr_max,
                              bool draw);
+
+WeightedLoss compute_weighted_color_losses(struct image_t *img, bool draw_blue_mask);
 
 #endif

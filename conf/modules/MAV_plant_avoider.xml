@@ -96,8 +96,14 @@
 
   <makefile target="ap">
     <file name="MAV_plant_avoider.cpp"/>
+    <file name="MAV_cv_color_group12_cmjong.c"/>
     <raw>
       ap.CXXFLAGS += -DPLANT_AVOIDER_USE_SIM_DARK_GREEN_HSV=0
+      ap.CXXFLAGS += -DPLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER=1
+      ap.CXXFLAGS += -DPLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV=1
+      ap.CXXFLAGS += -DMAV_CV_BLUE_MASK_Y=255
+      ap.CXXFLAGS += -DMAV_CV_BLUE_MASK_U=128
+      ap.CXXFLAGS += -DMAV_CV_BLUE_MASK_V=128
       ap.CXXFLAGS += -DPLANT_AVOIDER_SHOW_MASK=1
       ap.CXXFLAGS += -DPLANT_AVOIDER_SHOW_DETECTIONS=0
       ap.CXXFLAGS += -DPLANT_AVOIDER_SHOW_DEBUG_BOXES=0
@@ -123,9 +129,15 @@
 
   <makefile target="nps">
     <file name="MAV_plant_avoider.cpp"/>
+    <file name="MAV_cv_color_group12_cmjong.c"/>
     <raw>
       # Keep real-life YUV profile as default.
       nps.CXXFLAGS += -DPLANT_AVOIDER_USE_SIM_DARK_GREEN_HSV=0
+      nps.CXXFLAGS += -DPLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER=1
+      nps.CXXFLAGS += -DPLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV=1
+      nps.CXXFLAGS += -DMAV_CV_BLUE_MASK_Y=255
+      nps.CXXFLAGS += -DMAV_CV_BLUE_MASK_U=128
+      nps.CXXFLAGS += -DMAV_CV_BLUE_MASK_V=128
       nps.CXXFLAGS += -DPLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF=1
       nps.CXXFLAGS += -DPLANT_AVOIDER_Y_CENTER=46
       nps.CXXFLAGS += -DPLANT_AVOIDER_U_CENTER=106

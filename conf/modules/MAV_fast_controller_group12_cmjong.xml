@@ -3,7 +3,7 @@
   <doc>
     <description>
       Fast controller for MAV group 12 (cmjong).
-      Receives left/middle/right loss values from MAV_cv_detect_group12_cmjong
+      Receives left/middle/right loss values from a visual detection source
       and navigates using a state machine: SAFE_AND_WAIT, TURN_TO_LOWEST_LOSS,
       MOVE_FORWARD_WITH_FIXED_DISTANCE, OUT_OF_BOUNDS.
     </description>
@@ -12,10 +12,6 @@
         <define name="MAV_FAST_CONTROLLER_ENABLE_NAV_COMMANDS" value="0|1"
           description="Enable nav/waypoint commands from this module (set 0 when fused with MAV_plant_avoider)."/>
   </doc>
-
-  <dep>
-    <depends>MAV_cv_detect_group12_cmjong</depends>
-  </dep>
 
   <header>
     <file name="MAV_fast_controller_group12_cmjong.h"/>

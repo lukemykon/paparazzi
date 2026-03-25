@@ -15,9 +15,12 @@
 extern "C" {
 #include "modules/computer_vision/cv.h"
 #include "modules/computer_vision/lib/vision/image.h"
+#include "modules/computer_vision/MAV_cv_color_group12_cmjong.h"
 #include "firmwares/rotorcraft/guidance/guidance_h.h"
 #include "firmwares/rotorcraft/navigation.h"
 #include "modules/datalink/downlink.h"
+#include "modules/core/abi.h"
+#include "generated/airframe.h"
 #include "state.h"
 }
 
@@ -65,6 +68,18 @@ extern "C" {
 /* Keep camera processing/highlighting active even if control is disabled. */
 #ifndef PLANT_AVOIDER_ENABLE_VISION_CALLBACK
 #define PLANT_AVOIDER_ENABLE_VISION_CALLBACK 1
+#endif
+
+#ifndef MAV_cmjong_VISUAL_DETECTION_ID
+#define MAV_cmjong_VISUAL_DETECTION_ID ABI_BROADCAST
+#endif
+
+#ifndef PLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER
+#define PLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER 1
+#endif
+
+#ifndef PLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV
+#define PLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV 1
 #endif
 
 #ifndef PLANT_AVOIDER_SHOW_MASK
@@ -346,6 +361,17 @@ static struct image_t *plant_avoider_func(struct image_t *img, uint8_t camera_id
 
   /* Debug behavior: always run detection/highlighting, even on ground. */
   detect_green_top_half(img, true, &s);
+
+#if PLANT_AVOIDER_SEND_FUSED_LOSS_TO_FAST_CONTROLLER
+  const WeightedLoss fused_loss = compute_weighted_color_losses(img, PLANT_AVOIDER_BLUE_MASK_IN_FUSED_CV != 0);
+  AbiSendMsgVISUAL_DETECTION(MAV_cmjong_VISUAL_DETECTION_ID,
+                             (int16_t)fused_loss.left,
+                             (int16_t)fused_loss.middle,
+                             (int16_t)fused_loss.right,
+                             0,
+                             0,
+                             0);
+#endif
 
 #if PLANT_AVOIDER_DEBUG_YUV
   uint8_t py, pu, pv;
