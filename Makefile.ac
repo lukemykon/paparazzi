@@ -188,6 +188,9 @@ ifneq ($(PAPARAZZI_QT_GEN),)
 	$(Q)./sw/tools/qt_project.py $(AIRCRAFT) $(CONF_XML) $(SRCS_LIST)
 endif
 
+$(GENERATORS)/gen_aircraft.out:
+	$(MAKE) generators
+
 %.ac_h : $(GENERATORS)/gen_aircraft.out
 	$(Q)if (expr "$(AIRCRAFT)") > /dev/null; then : ; else echo "AIRCRAFT undefined: type 'make AIRCRAFT=AircraftName ...'"; exit 1; fi
 	@echo "#######################################"
@@ -220,6 +223,9 @@ hitl.compile: hitl.ac_h | print_version
 %.upload: %.compile
 	cd $(AIRBORNE); $(MAKE) TARGET=$* upload
 
+# Convenience alias so `make AIRCRAFT=<name> nps` works the same as `nps.compile`.
+nps: nps.compile
+
 hitl.upload: hitl.compile
 	cd $(AIRBORNE); $(MAKE) TARGET=ap upload
 
@@ -228,4 +234,4 @@ clean_ac :
 	@echo "CLEANING $(AIRCRAFT)"
 	$(Q)rm -fr $(AIRCRAFT_BUILD_DIR)
 
-.PHONY: all_ac_h clean_ac print_version generate_keys
+.PHONY: all_ac_h clean_ac print_version generate_keys nps
