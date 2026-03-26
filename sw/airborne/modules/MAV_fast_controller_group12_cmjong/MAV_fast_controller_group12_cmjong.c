@@ -62,17 +62,22 @@ enum navigation_state_t {
 #define MOVE_DISTANCE       0.5f
 #define AVOIDANCE_TURN_DEGREES_OutOfBound 5.f
 #define OF_AVOIDANCE_TURN_DEGREES 120.f
+#define COLOR_AVOIDANCE_TURN_DEGREES 45.f
 #define GYRO_YAW_RATE_THRESHOLD 0.15f
 #define OF_STARTUP_IGNORE_TIME 2.0f
 #define BRAKE_SPEED_THRESHOLD 0.1f
 #define BRAKE_TIMEOUT 2.0f
 #define RECENT_COLOR_DIR_TIMEOUT 3.0f
+#define STUCK_TIMER_THRESHOLD 10.0f
+#define STUCK_DISTANCE_THRESHOLD 0.1f
+#define EMERGENCY_TURN_DEGREES 100.0f
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SAFE_AND_WAIT;
 
 static bool of_obstacle_ahead = false;
 static float of_turn_remaining = 0.0f;
+static float color_turn_remaining = 0.0f;
 static bool was_in_flight = false;
 static float of_ignore_until = 0.0f;
 static float brake_start_time = 0.0f;
@@ -80,6 +85,9 @@ static float recent_color_dir_until = 0.0f;
 static bool pending_turn_from_of = false;
 static int16_t pending_turn_dir = 1;
 static int16_t recent_color_dir = 0;
+static float last_moved_time = 0.0f;
+static struct EnuCoor_i last_detected_position;
+static bool position_initialized = false;
 uint16_t detected_local = 1;
 int16_t col_left_loss = 0;
 int16_t col_center_loss = 0;
@@ -154,6 +162,8 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
     pending_turn_dir = 1;
     recent_color_dir_until = 0.0f;
     recent_color_dir = 0;
+    last_moved_time = 0.0f;
+    position_initialized = false;
     return;
   }
 
@@ -163,11 +173,39 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
     of_ignore_until = now + OF_STARTUP_IGNORE_TIME;
     of_obstacle_ahead = false;
     of_turn_remaining = 0.0f;
+    color_turn_remaining = 0.0f;
     pending_turn_from_of = false;
     pending_turn_dir = 1;
     recent_color_dir_until = 0.0f;
     recent_color_dir = 0;
+    last_moved_time = 0.0f;
+    position_initialized = false;
     luke_of_request_reset = true;
+  }
+
+  // Stuck timer: detect if drone is stationary for too long and force escape rotation
+  struct EnuCoor_i current_pos = *stateGetPositionEnu_i();
+  if (!position_initialized) {
+    last_detected_position = current_pos;
+    last_moved_time = now;
+    position_initialized = true;
+  } else {
+    float dist_moved = sqrtf(powf(POS_FLOAT_OF_BFP(current_pos.x - last_detected_position.x), 2.0f) +
+                              powf(POS_FLOAT_OF_BFP(current_pos.y - last_detected_position.y), 2.0f));
+
+    if (dist_moved > STUCK_DISTANCE_THRESHOLD) {
+      // Drone moved significantly, reset stuck timer
+      last_moved_time = now;
+      last_detected_position = current_pos;
+    } else {
+      if ((now - last_moved_time) >= STUCK_TIMER_THRESHOLD) {
+        // Force emergency right rotation to escape stuck state
+        VERBOSE_PRINT("STUCK TIMER TRIGGERED: Executing emergency 100° right rotation\n");
+        rotate_drone_heading(EMERGENCY_TURN_DEGREES);
+        last_moved_time = now;
+        last_detected_position = current_pos;
+      }
+    }
   }
 
   if (now < of_ignore_until) {
@@ -185,13 +223,14 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
   }
 
   VERBOSE_PRINT(
-  "State: %d | det: %u | L:%d C:%d R:%d | LowestLoss: %s | of: %d | of_turn_rem: %.1f | of_grace: %.1f\n",
+  "State: %d | det: %u | L:%d C:%d R:%d | LowestLoss: %s | of: %d | of_turn_rem: %.1f | col_turn_rem: %.1f | of_grace: %.1f\n",
   navigation_state,
   detected_local,
   col_left_loss, col_center_loss, col_right_loss,
   (lowest_loss_dir < 0) ? "LEFT" : ((lowest_loss_dir > 0) ? "RIGHT" : "CENTER"),
   of_obstacle_ahead,
   of_turn_remaining,
+  color_turn_remaining,
   fmaxf(0.0f, of_ignore_until - now)
 );
 
@@ -245,16 +284,26 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
         luke_of_request_reset = true;
         navigation_state = SAFE_AND_WAIT;
       }
+    } else if (color_turn_remaining > 0.f) {
+      // Mid color-turn — drain it before re-evaluating direction
+      float step = (color_turn_remaining < AVOIDANCE_TURN_DEGREES)
+                  ? color_turn_remaining : AVOIDANCE_TURN_DEGREES;
+      rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * step);
+      color_turn_remaining -= step;
+      if (color_turn_remaining <= 0.f) {
+        color_turn_remaining = 0.f;
+        navigation_state = SAFE_AND_WAIT;
+      }
     } else if (fresh_of) {
       // Only start a NEW OF turn if we just finished the last one
       pending_turn_from_of = true;
       pending_turn_dir = choose_of_turn_dir(now);
       of_turn_remaining = OF_AVOIDANCE_TURN_DEGREES;
     } else if (detected_local > 0) {
-      // Color-triggered turn (not interrupted by OF)
+      // Start a committed color turn — lock direction now, drain in subsequent cycles
       pending_turn_from_of = false;
       pending_turn_dir = choose_color_turn_dir();
-      rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * AVOIDANCE_TURN_DEGREES);
+      color_turn_remaining = COLOR_AVOIDANCE_TURN_DEGREES;
     } else {
       pending_turn_dir = 1;
       navigation_state = SAFE_AND_WAIT;

@@ -234,10 +234,16 @@ static struct image_t *object_detector(struct image_t *img, uint8_t camera_id)
     lowest_loss_dir = 0;
   }
 
-  VERBOSE_PRINT("LowestLoss: %s | det:%u | L:%u C:%u R:%u\n",
-                loss_dir_to_str(lowest_loss_dir),
-                detected_local,
-                left_loss, center_loss, right_loss);
+  static uint8_t print_skip = 0;
+  if (++print_skip >= 4) {
+    print_skip = 0;
+    VERBOSE_PRINT("LowestLoss: %s | det:%u | G_L:%u G_C:%u G_R:%u | O_L:%u O_C:%u O_R:%u | B_L:%u B_C:%u B_R:%u\n",
+                  loss_dir_to_str(lowest_loss_dir),
+                  detected_local,
+                  green_cols.left,  green_cols.center,  green_cols.right,
+                  orange_cols.left, orange_cols.center, orange_cols.right,
+                  blue_cols.left,   blue_cols.center,   blue_cols.right);
+  }
 
   // --- Stage 2: edge detection (future — insert here) ---
   // if (detected_local == 0) {

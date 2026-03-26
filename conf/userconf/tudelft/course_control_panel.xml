@@ -91,6 +91,7 @@
         <arg flag="caps=application/x-rtp,payload=26"/>
         <arg flag="! rtpjpegdepay ! jpegdec ! videoflip method=counterclockwise ! autovideosink"/>
       </program>
+    </session>
     <session name="Distance Counter">
       <program name="Optitrack Distance Counter"/>
     </session>
