@@ -8,7 +8,7 @@
     #include "modules/energy/electrical.h"
     #include "modules/radio_control/radio_control.h"
     #include "modules/ahrs/ahrs.h"
-    #define NPS_GAZEBO_WORLD "/home/lukelommers/tud/Q3_MAV/paparazzi/conf/gazebo/worlds/MAV_test.world"
+    #define NPS_GAZEBO_WORLD "/sw/ext/tudelft_gazebo_models/world/MAV_test_group12_2026.world"
   </header>
 
   <!--=== Waypoints: define all waypoints and geofence corners ===-->
