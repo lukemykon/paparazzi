@@ -5,9 +5,8 @@
  *
  */
 /**
- * @file "modules/orange_avoider/orange_avoider.h"
- * @author Roland Meertens
- * Example on how to use the colours detected to avoid orange pole in the cyberzoo
+ * @file "modules/MAV_fast_controller_group12_cmjong/MAV_fast_controller_group12_cmjong.h"
+ * @brief Public interface for the MAV course group 12 (cmjong) avoidance state machine.
  */
 
 #ifndef MAV_FAST_CONTROLLER_GROUP12_CMJONG_H

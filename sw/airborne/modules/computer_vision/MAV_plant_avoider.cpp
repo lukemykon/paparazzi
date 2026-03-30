@@ -170,6 +170,19 @@ static bool is_drone_near_ground(void)
 }
 #endif
 
+/**
+ * detect_green_top_half — scan the image for green pixels and tally left/straight/right counts.
+ *
+ * Same half-frame and rotated-camera logic as blue_detector's detect_blue_top_half():
+ *   PLANT_AVOIDER_USE_HALF_FOV = 1  — restrict to the "far" half of the image.
+ *   PLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF = 1  — processes x >= w/2 (right side of buffer =
+ *                                                  top half of the physical scene after 90° rotation).
+ *   PLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF = 0  — processes y < h/2 (top of buffer).
+ *
+ * @param img       Source YUV422 image; modified in-place when draw_mask is true.
+ * @param draw_mask If true, overwrite matched pixels with the mask color for video overlay.
+ * @param out       Output zone counts; zeroed by this function before counting.
+ */
 static void detect_green_top_half(struct image_t *img, bool draw_mask, struct pa_zone_scores_t *out)
 {
   memset(out, 0, sizeof(*out));
@@ -199,6 +212,8 @@ static void detect_green_top_half(struct image_t *img, bool draw_mask, struct pa
       uint8_t up;
       uint8_t vp;
 
+      // YUV422 packs two pixels per macro-pixel as [U Y0 V Y1].
+      // Even pixels carry their own U/V; odd pixels share the chroma of the preceding even pixel.
       if ((x & 1U) == 0U) {
         const uint32_t base = row_base + (uint32_t)(2U * x);
         up = buf[base];
@@ -206,9 +221,9 @@ static void detect_green_top_half(struct image_t *img, bool draw_mask, struct pa
         vp = buf[base + 2U];
       } else {
         const uint32_t base = row_base + (uint32_t)(2U * x);
-        up = buf[base - 2U];
+        up = buf[base - 2U];  // borrow U from the previous even pixel
         yp = buf[base + 1U];
-        vp = buf[base];
+        vp = buf[base];       // V is at offset 0 of the odd pixel's byte pair
       }
 
       if (!is_green_yuv(yp, up, vp)) {
@@ -234,6 +249,7 @@ static void detect_green_top_half(struct image_t *img, bool draw_mask, struct pa
 #endif
 
 #if PLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF
+      // Camera rotated 90°: image y-axis = physical left/right.
       if (y < one_third_y) {
         out->left++;
       } else if (y < (2U * one_third_y)) {
@@ -242,6 +258,7 @@ static void detect_green_top_half(struct image_t *img, bool draw_mask, struct pa
         out->right++;
       }
 #else
+      // Camera not rotated: image x-axis = physical left/right.
       if (x < one_third_x) {
         out->left++;
       } else if (x < (2U * one_third_x)) {

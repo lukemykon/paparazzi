@@ -1,10 +1,44 @@
+/**
+ * @file MAV_cv_color_group12_cmjong.c
+ * @brief YUV422 color detection utilities: pixel counting and left/center/right column scoring.
+ *
+ * COORDINATE SYSTEM NOTE — the Bebop front camera feed is rotated 90° clockwise before
+ * it reaches these functions.  As a result the image axes are swapped relative to the
+ * physical scene:
+ *   image x  →  physical vertical  (top-to-bottom in the frame)
+ *   image y  →  physical left-right (left wing to right wing of the drone)
+ * All "column" boundaries in color_detection_columns() therefore partition the image
+ * along the y-axis (rows in buffer terms) to produce left / center / right scores.
+ */
+
 #include "modules/computer_vision/MAV_cv_color_group12_cmjong.h"
 
-// Scan-band configuration
-#define SCAN_NUM_LINES   5   // number of horizontal scan bands
-#define SCAN_THICKNESS   1   // width of each band in pixels
-#define SCAN_SPACING     15  // gap between band edges in pixels
+/*
+ * Sparse scan-band strategy: instead of testing every pixel in the full frame we sample
+ * SCAN_NUM_LINES thin vertical strips (in image-x, i.e. physical vertical bands).
+ * This keeps CPU load proportional to SCAN_NUM_LINES*SCAN_THICKNESS*h rather than w*h,
+ * while still giving a representative cross-section of the obstacle-zone columns.
+ */
+#define SCAN_NUM_LINES   5   ///< number of vertical scan strips (in image-x)
+#define SCAN_THICKNESS   1   ///< width of each strip in pixels
+#define SCAN_SPACING     15  ///< gap between adjacent strip edges in pixels
 
+/**
+ * draw_horizontal_line — paint a single-pixel-wide vertical line at column x_col
+ * into a YUV422 buffer.
+ *
+ * Despite the name "horizontal line", because the camera feed is rotated 90° this
+ * function draws what appears as a vertical divider in the physical scene.  It is
+ * used to overlay scan-band boundaries on the streamed video for debugging.
+ *
+ * @param buffer  Pointer to the YUV422 image buffer (in-place modification).
+ * @param img_w   Image width in pixels.
+ * @param img_h   Image height in pixels.
+ * @param x_col   Column index (image-x) to draw; rounded down to an even pixel.
+ * @param y_val   Luma (Y) to write for the line pixels.
+ * @param u_val   Cb (U) chroma to write.
+ * @param v_val   Cr (V) chroma to write.
+ */
 static void draw_horizontal_line(uint8_t *buffer, uint16_t img_w, uint16_t img_h,
                                 uint16_t x_col, uint8_t y_val, uint8_t u_val, uint8_t v_val)
 {
@@ -26,6 +60,19 @@ static void draw_horizontal_line(uint8_t *buffer, uint16_t img_w, uint16_t img_h
   }
 }
 
+/**
+ * color_detection — count pixels in the image that fall within a YUV color range.
+ *
+ * Samples only the sparse scan strips defined by SCAN_NUM_LINES / SCAN_THICKNESS /
+ * SCAN_SPACING rather than the full frame, to reduce CPU load.
+ *
+ * @param img      Source YUV422 image.  Modified in-place only when draw == true.
+ * @param lum_min/lum_max  Inclusive luma (Y) range.
+ * @param cb_min/cb_max    Inclusive Cb (U) range.
+ * @param cr_min/cr_max    Inclusive Cr (V) range.
+ * @param draw     If true, overlay white scan-band boundary lines on img->buf.
+ * @return Raw pixel count of matching pixels across all scan strips (capped at 65535).
+ */
 uint16_t color_detection(struct image_t *img,
                          uint8_t lum_min, uint8_t lum_max,
                          uint8_t cb_min,  uint8_t cb_max,
@@ -36,13 +83,13 @@ uint16_t color_detection(struct image_t *img,
   uint8_t *buffer  = img->buf;
   uint16_t w       = img->w;
   uint16_t h       = img->h;
+  // YUV422 stores pixels in even/odd pairs; truncate to even width to avoid partial macro-pixels.
   uint16_t scan_w  = w & ~1u;
 
   if (!buffer || scan_w < 2 || h == 0) {
     return 0;
   }
 
-  // YUV422 stores pixels in even/odd pairs; skip any trailing odd column.
   uint16_t block    = SCAN_THICKNESS + SCAN_SPACING;
   uint16_t total_w  = block * SCAN_NUM_LINES - SCAN_SPACING;
   uint16_t x_offset = (scan_w > total_w) ? (scan_w - total_w) / 2 : 0;
@@ -64,6 +111,8 @@ uint16_t color_detection(struct image_t *img,
     }
   }
 
+  // VLA: stack-allocated lookup for each column; size = scan_w (typically 240 or 320 pixels).
+  // scan_w is always even and bounded by the camera resolution so stack usage is safe.
   bool in_band[scan_w];
   for (uint16_t x = 0; x < scan_w; x++) {
     in_band[x] = false;
@@ -107,13 +156,29 @@ uint16_t color_detection(struct image_t *img,
   return (uint16_t)(total > 65535 ? 65535 : total);
 }
 
-// Column boundary fractions along the h-dimension (physical left-right).
-// LEFT: 0–30%, CENTER: 25–75%, RIGHT: 70–100%.  5% overlap on each side.
-#define COL_LEFT_FRAC    0.30f
-#define COL_CENTER_START 0.25f
-#define COL_CENTER_END   0.75f
-#define COL_RIGHT_FRAC   0.70f
+/*
+ * Column boundary fractions along the image y-axis (= physical left/right, see file header).
+ *
+ * The three regions intentionally overlap by 5% on each shared edge so that an obstacle
+ * near a boundary scores in both adjacent regions — this prevents blind spots and gives
+ * the controller a smoother directional signal when an obstacle straddles a boundary.
+ *
+ *   Physical:   LEFT       CENTER          RIGHT
+ *   y fraction: 0 ─── 30%  25% ─── 75%  70% ─── 100%
+ *               └──── 5% overlap ──┘  └── 5% overlap ──┘
+ */
+#define COL_LEFT_FRAC    0.30f   ///< upper boundary of the LEFT zone (fraction of image h)
+#define COL_CENTER_START 0.25f   ///< start of CENTER zone (overlaps LEFT by 5%)
+#define COL_CENTER_END   0.75f   ///< end of CENTER zone (overlaps RIGHT by 5%)
+#define COL_RIGHT_FRAC   0.70f   ///< lower boundary of the RIGHT zone
 
+/**
+ * draw_row_line — paint a single-pixel-high horizontal line at row y_row.
+ *
+ * Despite the "row" name, because the camera is rotated 90° this line appears as a
+ * vertical column boundary in the physical scene.  Used to overlay the left/center/right
+ * zone boundaries on the streamed video for debugging.
+ */
 static void draw_row_line(uint8_t *buffer, uint16_t img_w, uint16_t img_h,
                           uint16_t y_row, uint8_t y_val, uint8_t u_val, uint8_t v_val)
 {
@@ -128,6 +193,21 @@ static void draw_row_line(uint8_t *buffer, uint16_t img_w, uint16_t img_h,
   }
 }
 
+/**
+ * color_detection_columns — count matching pixels per physical zone (LEFT/CENTER/RIGHT).
+ *
+ * Partitions the frame into three overlapping zones along the image y-axis (physical
+ * left/right direction — see file-level coordinate note).  Uses the same sparse scan-band
+ * sampling as color_detection() to limit CPU usage.
+ *
+ * @param img      Source YUV422 image.  Modified in-place only when draw == true.
+ * @param lum_min/lum_max  Inclusive luma (Y) range.
+ * @param cb_min/cb_max    Inclusive Cb (U) range.
+ * @param cr_min/cr_max    Inclusive Cr (V) range.
+ * @param draw     If true, overlay scan-band and zone-boundary lines on img->buf.
+ * @return struct column_counts with raw pixel counts for left, center, and right zones.
+ *         Zones overlap, so a pixel near a boundary may contribute to two counts.
+ */
 struct column_counts color_detection_columns(struct image_t *img,
                                              uint8_t lum_min, uint8_t lum_max,
                                              uint8_t cb_min,  uint8_t cb_max,
@@ -161,6 +241,7 @@ struct column_counts color_detection_columns(struct image_t *img,
     if (be[i] > scan_w) be[i] = scan_w;
   }
 
+  // VLA: same stack-based column lookup as in color_detection(); safe for typical resolutions.
   bool x_in_band[scan_w];
   for (uint16_t x = 0; x < scan_w; x++) {
     x_in_band[x] = false;

@@ -113,15 +113,16 @@ struct opticflow_t luke_of_opticflow[LUKE_OF_CAMERA_SLOTS];
 
 // ── Shared message struct ────────────────────────────────────────────────────
 struct cv_detect_message {
-  int16_t  detected;
-  int16_t  left_loss;
-  int16_t  center_loss;
-  int16_t  right_loss;
-  int16_t  lowest_loss_dir;   // -1=left, 0=straight, +1=right
-  bool     updated;
-  struct opticflow_result_t of_result;
-  bool     of_updated;
+  int16_t  detected;           ///< Non-zero when at least one color channel exceeded its threshold.
+  int16_t  left_loss;          ///< Total obstacle pixels in the LEFT zone (all colors summed).
+  int16_t  center_loss;        ///< Total obstacle pixels in the CENTER zone.
+  int16_t  right_loss;         ///< Total obstacle pixels in the RIGHT zone.
+  int16_t  lowest_loss_dir;    ///< Recommended escape direction: -1=left, 0=straight, +1=right.
+  bool     updated;            ///< Set to true each time object_detector() writes a new result.
+  struct opticflow_result_t of_result; ///< Latest optical-flow computation result.
+  bool     of_updated;         ///< Set to true only when of_result contains a fresh OF estimate.
 };
+// Index 0 = camera slot 0 (front camera).  Only one slot is used; array kept for future expansion.
 struct cv_detect_message global_message[1];
 
 static const char *loss_dir_to_str(int16_t dir) __attribute__((unused));
@@ -138,6 +139,19 @@ static const char *loss_dir_to_str(int16_t dir)
 
 
 // ── Crop helper ──────────────────────────────────────────────────────────────
+/**
+ * crop_image_center — shrink an image to a centered sub-rectangle, IN PLACE.
+ *
+ * Rows are moved to the start of img->buf using memmove (safe for overlapping regions
+ * because destination is always before or equal to source).  img->w, img->h, and
+ * img->buf_size are updated; img->buf pointer itself is unchanged.
+ *
+ * Width is rounded down to an even number to preserve YUV422 macro-pixel alignment.
+ *
+ * @param img          Image to crop; modified in-place.
+ * @param keep_w_frac  Fraction of width to keep (0.0–1.0).
+ * @param keep_h_frac  Fraction of height to keep (0.0–1.0).
+ */
 static void crop_image_center(struct image_t *img, float keep_w_frac, float keep_h_frac)
 {
   uint16_t new_w = (uint16_t)(img->w * keep_w_frac);
@@ -303,7 +317,11 @@ static struct image_t *object_detector(struct image_t *img, uint8_t camera_id)
 
 
 /*
- * Wrapper so cv_add_to_device always calls with camera_id=0.
+ * object_detector1 — cv_add_to_device callback for camera slot 0.
+ *
+ * cv_add_to_device passes the hardware camera_id to its callback, but object_detector()
+ * uses it as a slot index into global_message[].  This wrapper hard-codes slot 0 so
+ * the callback signature matches what cv.h expects while we only ever use one camera.
  */
 struct image_t *object_detector1(struct image_t *img, uint8_t camera_id);
 struct image_t *object_detector1(struct image_t *img, uint8_t camera_id __attribute__((unused)))

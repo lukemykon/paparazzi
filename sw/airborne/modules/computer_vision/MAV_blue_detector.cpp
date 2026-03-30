@@ -111,6 +111,13 @@ extern "C" {
 #define BLUE_DETECTOR_V_TOL 30
 #endif
 
+/*
+ * BLUE_DETECTOR_SIGNED_CENTERS selects the convention used for U/V center values:
+ *   0 (default) — centers are raw unsigned byte values (0–255, gray-point = 128).
+ *                 The macro subtracts 128 so the threshold arithmetic is in signed space.
+ *   1           — centers are already expressed as signed offsets from gray (−128…+127).
+ *                 Use this when tuning with tools that report signed chroma directly.
+ */
 #ifndef BLUE_DETECTOR_SIGNED_CENTERS
 #define BLUE_DETECTOR_SIGNED_CENTERS 0
 #endif
@@ -162,10 +169,22 @@ float bd_weight_right = 0.0f;
 static struct bd_zone_scores_t g_scores;
 static pthread_mutex_t g_mutex;
 
+/*
+ * is_blue_yuv — test whether a single pixel matches the blue color profile.
+ *
+ * Raw YUV422 chroma bytes (U, V) are unsigned 0–255 with the neutral gray point at 128.
+ * Subtracting 128 converts them to the signed −128…+127 range used by the detector
+ * thresholds, so that positive U means "more Cb / blue-leaning" and negative V means
+ * "less Cr / less red-leaning" — the signature for blue in YCbCr space.
+ *
+ * Y (luma) is kept unsigned; BLUE_DETECTOR_Y_CENTER = 3 targets very dark / shadowy
+ * pixels (effective range 0–33 after clamping), which characterises the blue poles in
+ * the cyberzoo under typical lighting.
+ */
 static inline bool is_blue_yuv(uint8_t y, uint8_t u, uint8_t v)
 {
   const int16_t y_signed = (int16_t)y;
-  const int16_t u_signed = (int16_t)u - 128;
+  const int16_t u_signed = (int16_t)u - 128;  // re-centre chroma around 0
   const int16_t v_signed = (int16_t)v - 128;
   return (y_signed >= BLUE_DETECTOR_Y_MIN && y_signed <= BLUE_DETECTOR_Y_MAX &&
           u_signed >= BLUE_DETECTOR_U_MIN && u_signed <= BLUE_DETECTOR_U_MAX &&
@@ -179,6 +198,22 @@ static bool is_drone_near_ground(void)
 }
 #endif
 
+/**
+ * detect_blue_top_half — scan the image for blue pixels and tally left/straight/right counts.
+ *
+ * Which half of the frame is processed depends on compile-time flags:
+ *   BLUE_DETECTOR_USE_HALF_FOV = 1  — restrict to the "far" half of the image.
+ *   BLUE_DETECTOR_ROTATED_CAMERA_TOP_HALF = 1  — "far" half = right half of buffer (x >= w/2),
+ *                                                  corresponding to the top half of the physical scene.
+ *   BLUE_DETECTOR_ROTATED_CAMERA_TOP_HALF = 0  — "far" half = top half of buffer (y < h/2).
+ *
+ * Zone assignment (left/straight/right) partitions the remaining pixels into thirds
+ * along the axis perpendicular to the restricted half.
+ *
+ * @param img       Source YUV422 image; modified in-place when draw_mask is true.
+ * @param draw_mask If true, overwrite matched pixels with the mask color for video overlay.
+ * @param out       Output zone counts; zeroed by this function before counting.
+ */
 static void detect_blue_top_half(struct image_t *img, bool draw_mask, struct bd_zone_scores_t *out)
 {
   memset(out, 0, sizeof(*out));

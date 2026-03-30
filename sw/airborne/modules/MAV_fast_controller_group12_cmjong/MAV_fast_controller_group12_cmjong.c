@@ -5,16 +5,23 @@
  *
  */
 /**
- * @file "modules/orange_avoider/orange_avoider.c"
- * @author Roland Meertens
- * Example on how to use the colours detected to avoid orange pole in the cyberzoo
- * This module is an example module for the course AE4317 Autonomous Flight of Micro Air Vehicles at the TU Delft.
- * This module is used in combination with a color filter (cv_detect_color_object) and the navigation mode of the autopilot.
- * The avoidance strategy is to simply count the total number of orange pixels. When above a certain percentage threshold,
- * (given by color_count_frac) we assume that there is an obstacle and we turn.
+ * @file "modules/MAV_fast_controller_group12_cmjong/MAV_fast_controller_group12_cmjong.c"
+ * @brief State-machine flight controller for the TU Delft MAV course (group 12 / cmjong).
  *
- * The color filter settings are set using the cv_detect_color_object. This module can run multiple filters simultaneously
- * so you have to define which filter to use with the ORANGE_AVOIDER_VISUAL_DETECTION_ID setting.
+ * Receives obstacle detections from MAV_cv_detect_group12_cmjong via ABI messages and
+ * drives the NAV-mode waypoints to avoid obstacles.  Two detection sources are fused:
+ *  - Color detection (orange / blue / green pixel counts per zone) → color-based turns.
+ *  - Optical flow divergence                                        → OF-based turns.
+ *
+ * State machine overview:
+ *   SAFE_AND_WAIT  →  BRAKING  →  TURN_AVOID  →  SAFE_AND_WAIT
+ *                ↘                              ↗
+ *             MOVE_FORWARD_WITH_FIXED_DISTANCE
+ *             OUT_OF_BOUNDS  (rotate until back inside arena)
+ *
+ * ABI bindings (see wiki.paparazziuav.org/wiki/ABI):
+ *   COLOR_OBJECT_DETECTION1_ID  — color zone scores from cv_detect module
+ *   LUKE_OF_VISUAL_DETECTION_ID — optical-flow obstacle quality from cv_detect module
  */
 
 #include "modules/MAV_fast_controller_group12_cmjong/MAV_fast_controller_group12_cmjong.h"
@@ -48,29 +55,29 @@ static int16_t choose_color_turn_dir(void);
 static int16_t choose_of_turn_dir(float now);
 
 enum navigation_state_t {
-  SAFE_AND_WAIT,
-  BRAKING,
-  TURN_AVOID,
-  SEARCH_FOR_SAFE_HEADING,
-  MOVE_FORWARD_WITH_FIXED_DISTANCE,
-  GATE_DETECTED,
-  OUT_OF_BOUNDS,
+  SAFE_AND_WAIT,                   ///< Hold position; wait for a clean camera frame before moving.
+  BRAKING,                         ///< Hold waypoints and wait for forward speed to drop near zero.
+  TURN_AVOID,                      ///< Execute a committed avoidance turn (color- or OF-based).
+  SEARCH_FOR_SAFE_HEADING,         ///< Reserved for future use — not currently entered.
+  MOVE_FORWARD_WITH_FIXED_DISTANCE,///< Advance MOVE_DISTANCE metres toward current heading.
+  GATE_DETECTED,                   ///< Reserved for future use — not currently entered.
+  OUT_OF_BOUNDS,                   ///< Outside obstacle zone; rotate until WP_TRAJECTORY is back inside.
 };
 
 
-#define AVOIDANCE_TURN_DEGREES 5.f
-#define MOVE_DISTANCE       0.5f
-#define AVOIDANCE_TURN_DEGREES_OutOfBound 5.f
-#define OF_AVOIDANCE_TURN_DEGREES 120.f
-#define COLOR_AVOIDANCE_TURN_DEGREES 45.f
-#define GYRO_YAW_RATE_THRESHOLD 0.15f
-#define OF_STARTUP_IGNORE_TIME 2.0f
-#define BRAKE_SPEED_THRESHOLD 0.1f
-#define BRAKE_TIMEOUT 2.0f
-#define RECENT_COLOR_DIR_TIMEOUT 3.0f
-#define STUCK_TIMER_THRESHOLD 10.0f
-#define STUCK_DISTANCE_THRESHOLD 0.1f
-#define EMERGENCY_TURN_DEGREES 100.0f
+#define AVOIDANCE_TURN_DEGREES            5.f    ///< [deg] Per-cycle yaw step during any avoidance turn.
+#define MOVE_DISTANCE                     0.5f   ///< [m]   Waypoint advance per MOVE_FORWARD cycle.
+#define AVOIDANCE_TURN_DEGREES_OutOfBound 5.f    ///< [deg] Per-cycle yaw step when recovering from out-of-bounds.
+#define OF_AVOIDANCE_TURN_DEGREES       120.f    ///< [deg] Total yaw for an optical-flow obstacle turn.
+#define COLOR_AVOIDANCE_TURN_DEGREES     45.f    ///< [deg] Total yaw for a color-detection obstacle turn.
+#define GYRO_YAW_RATE_THRESHOLD          0.15f   ///< [rad/s] Suppress new OF triggers while yaw rate exceeds this.
+#define OF_STARTUP_IGNORE_TIME           2.0f    ///< [s]   Ignore OF detections for this long after takeoff (transient flow from spin-up).
+#define BRAKE_SPEED_THRESHOLD            0.1f    ///< [m/s] Consider the drone stopped when forward speed is below this.
+#define BRAKE_TIMEOUT                    2.0f    ///< [s]   Force exit from BRAKING after this time even if speed is still above threshold.
+#define RECENT_COLOR_DIR_TIMEOUT         3.0f    ///< [s]   How long a color turn direction is kept as a hint for subsequent OF turns.
+#define STUCK_TIMER_THRESHOLD           10.0f    ///< [s]   Trigger emergency escape rotation if the drone hasn't moved in this long.
+#define STUCK_DISTANCE_THRESHOLD         0.1f    ///< [m]   Minimum displacement to reset the stuck timer.
+#define EMERGENCY_TURN_DEGREES         100.0f    ///< [deg] Heading change applied as a stuck-escape manoeuvre.
 
 // define and initialise global variables
 enum navigation_state_t navigation_state = SAFE_AND_WAIT;
@@ -138,18 +145,14 @@ static void luke_of_message_callback(
   of_obstacle_ahead = (quality > 0);
 }
 
-/*
--------------function that is called once--------------------------------------------------------------------------
-*/
+/* Called once at module startup — bind both ABI channels. */
 void MAV_fast_controller_group12_cmjong_init(void)
 {
   AbiBindMsgVISUAL_DETECTION(MAV_cmjong_VISUAL_DETECTION_ID, &cv_detect_event, cv_detection_message_callback);
   AbiBindMsgVISUAL_DETECTION(MAV_cmjong_OF_VISUAL_DETECTION_ID, &luke_of_event, luke_of_message_callback);
 }
 
-/*
--------------------Function that is cald every .. hz that send info to the fast controller--------------------------
-*/
+/* Called periodically (nav frequency) — runs the avoidance state machine. */
 void MAV_fast_controller_group12_cmjong_periodic(void)
 {
   // only evaluate our state machine if we are flying
@@ -261,6 +264,8 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
       struct NedCoor_f *speed = stateGetSpeedNed_f();
       float fwd_speed = speed->x * sinf(heading) + speed->y * cosf(heading);
 
+      // Use heading-projected NED speed (dot product of velocity with heading unit vector)
+      // rather than total speed magnitude so that sideways drift doesn't prevent braking exit.
       if (fabsf(fwd_speed) < BRAKE_SPEED_THRESHOLD || (now - brake_start_time) > BRAKE_TIMEOUT) {
         navigation_state = TURN_AVOID;
       }
@@ -358,6 +363,7 @@ void MAV_fast_controller_group12_cmjong_periodic(void)
 }
 
 
+/* Returns uint8_t false (0) to match the legacy nav helper signature; return value unused. */
 static uint8_t rotate_drone_heading(float degrees)
 {
   float new_heading = stateGetNedToBodyEulers_f()->psi + RadOfDeg(degrees);
@@ -410,6 +416,13 @@ static int16_t choose_color_turn_dir(void)
   return (lowest_loss_dir < 0) ? -1 : 1;
 }
 
+/*
+ * choose_of_turn_dir — pick a turn direction when an OF obstacle is detected.
+ *
+ * Optical flow alone cannot tell which side is clearer, so we borrow the most recent
+ * color-detection direction (kept valid for RECENT_COLOR_DIR_TIMEOUT seconds) as a hint.
+ * If no recent color reading exists (or it indicated straight), default to +1 (right).
+ */
 static int16_t choose_of_turn_dir(float now)
 {
   if (now <= recent_color_dir_until && recent_color_dir < 0) {
@@ -418,5 +431,5 @@ static int16_t choose_of_turn_dir(float now)
   if (now <= recent_color_dir_until && recent_color_dir > 0) {
     return 1;
   }
-  return 1;
+  return 1;  // default: turn right when no color hint is available
 }
