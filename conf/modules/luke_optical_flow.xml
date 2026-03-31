@@ -1,0 +1,105 @@
+<!DOCTYPE module SYSTEM "module.dtd">
+
+<module name="luke_optical_flow">
+  <doc>
+    <description>
+      MAV Course 2026 - front-camera obstacle detector built as a thin wrapper
+      around Paparazzi's opticflow calculator.
+    </description>
+    <section name="OPTICFLOW" prefix="OPTICFLOW_">
+      <define name="LUKE_OF_VISUAL_DETECTION_ID" value="ABI_BROADCAST" description="VISUAL_DETECTION sender id used by Luke optical flow"/>
+      <define name="CAMERA" value="front_camera|bottom_camera" description="Video device used for optical-flow calculations"/>
+      <define name="SHOW_FLOW" value="FALSE|TRUE" description="Draw standard opticflow vectors into the source image"/>
+      <define name="METHOD" value="0" description="Method used to calculate optical flow"/>
+      <define name="CORNER_METHOD" value="0" description="Corner detector: exhaustive FAST (0) or ACT-FAST (1)"/>
+      <define name="MAX_TRACK_CORNERS" value="100" description="Maximum number of tracked corners"/>
+      <define name="FAST9_THRESHOLD" value="7" description="FAST9 detection threshold"/>
+      <define name="FAST9_MIN_DISTANCE" value="5" description="Minimum pixel spacing between corners"/>
+      <define name="FAST9_PADDING" value="20" description="Image border excluded from corner detection"/>
+      <define name="FEATURE_MANAGEMENT" value="TRUE" description="Reuse tracked features across frames"/>
+      <define name="FAST9_REGION_DETECT" value="TRUE" description="Balance FAST9 detections across image regions"/>
+      <define name="FAST9_NUM_REGIONS" value="9" description="Number of detection regions when region balancing is enabled"/>
+      <define name="PYRAMID_LEVEL" value="2" description="Number of Lucas-Kanade pyramid levels"/>
+    </section>
+  </doc>
+  <settings>
+    <dl_settings>
+      <dl_settings name="LukeOpticalFlow">
+        <dl_setting var="luke_of_divergence_threshold"
+                    min="0.0" step="0.005" max="0.5"
+                    shortname="div_thresh"/>
+        <dl_setting var="luke_of_ema_alpha"
+                    min="0.05" step="0.05" max="1.0"
+                    shortname="ema_alpha"/>
+        <dl_setting var="luke_of_derotation"
+                    min="0" step="1" max="1"
+                    values="FALSE|TRUE"
+                    shortname="derot"/>
+        <dl_setting var="luke_of_show_stream_overlay"
+                    min="0" step="1" max="1"
+                    values="FALSE|TRUE"
+                    shortname="stream_dbg"/>
+        <dl_setting var="luke_of_opticflow[0].method"
+                    min="0" step="1" max="1"
+                    values="LK_Fast9|EdgeFlow"
+                    shortname="method"/>
+        <dl_setting var="luke_of_opticflow[0].corner_method"
+                    min="0" step="1" max="1"
+                    values="Fast9|ACTFAST"
+                    shortname="corner"/>
+        <dl_setting var="luke_of_opticflow[0].max_track_corners"
+                    min="1" step="1" max="500"
+                    shortname="max_pts"/>
+        <dl_setting var="luke_of_opticflow[0].fast9_threshold"
+                    min="0" step="1" max="255"
+                    shortname="fast_thr"/>
+        <dl_setting var="luke_of_opticflow[0].fast9_min_distance"
+                    min="0" step="1" max="500"
+                    shortname="fast_dst"/>
+        <dl_setting var="luke_of_opticflow[0].fast9_padding"
+                    min="0" step="1" max="50"
+                    shortname="pad"/>
+        <dl_setting var="luke_of_opticflow[0].feature_management"
+                    min="0" step="1" max="1"
+                    values="FALSE|TRUE"
+                    shortname="feat_mg"/>
+        <dl_setting var="luke_of_opticflow[0].fast9_region_detect"
+                    min="0" step="1" max="1"
+                    values="FALSE|TRUE"
+                    shortname="regions"/>
+        <dl_setting var="luke_of_opticflow[0].fast9_num_regions"
+                    min="1" step="1" max="25"
+                    shortname="n_reg"/>
+        <dl_setting var="luke_of_opticflow[0].pyramid_level"
+                    min="0" step="1" max="10"
+                    shortname="pyr"/>
+      </dl_settings>
+    </dl_settings>
+  </settings>
+  <dep>
+    <depends>video_thread,agl_dist,pose_history</depends>
+  </dep>
+  <header>
+    <file name="luke_optical_flow.h"/>
+  </header>
+  <init fun="luke_optical_flow_init()"/>
+  <periodic fun="luke_optical_flow_periodic()" freq="10" autorun="TRUE"/>
+  <makefile target="ap|nps">
+    <include name="modules/computer_vision"/>
+    <file name="luke_optical_flow.c"/>
+    <file name="opticflow_calculator.c" dir="modules/computer_vision/opticflow"/>
+    <file name="size_divergence.c" dir="modules/computer_vision/opticflow"/>
+    <file name="linear_flow_fit.c" dir="modules/computer_vision/opticflow"/>
+    <file name="pprz_algebra_float.c" dir="math"/>
+    <file name="pprz_matrix_decomp_float.c" dir="math"/>
+    <file name="act_fast.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="fast_rosten.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="lucas_kanade.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="edge_flow.c" dir="modules/computer_vision/lib/vision"/>
+    <file name="undistortion.c" dir="modules/computer_vision/lib/vision"/>
+    <test arch="linux">
+      <define name="OPTICFLOW_CAMERA" value="front_camera"/>
+    </test>
+  </makefile>
+
+</module>

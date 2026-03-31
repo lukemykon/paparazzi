@@ -1,0 +1,74 @@
+<?xml version="1.0"?>
+<!--
+  Plant Avoider Module
+
+  Detects green pixels in YUV422 camera images and can optionally steer the
+  drone away from the least-safe region.
+-->
+<module name="MAV_plant_avoider" dir="computer_vision">
+
+  <doc>
+    <description>
+      Green pixel avoider for front-camera experiments. It can draw a mask on
+      the camera feed and optionally send body-velocity commands.
+    </description>
+    <define name="PLANT_AVOIDER_CAMERA"
+            value="front_camera|bottom_camera"
+            description="Camera device to process"/>
+    <define name="PLANT_AVOIDER_FPS"
+            value="4"
+            description="Vision callback rate in Hz"/>
+    <define name="PLANT_AVOIDER_ENABLE_VISION_CALLBACK"
+            value="0|1"
+            description="Enable camera callback processing"/>
+    <define name="PLANT_AVOIDER_ENABLE_STANDALONE_CONTROL"
+            value="0|1"
+            description="Enable body-velocity avoidance control"/>
+    <define name="PLANT_AVOIDER_NAV_MODE_CONTROL"
+            value="0|1"
+            description="Allow body-velocity control while in NAV mode"/>
+    <define name="PLANT_AVOIDER_SHOW_MASK"
+            value="0|1"
+            description="Draw a green mask over matched pixels"/>
+    <define name="PLANT_AVOIDER_FORWARD_SPEED"
+            value="0.3f"
+            description="Cruise forward body velocity (m/s)"/>
+    <define name="PLANT_AVOIDER_TURN_SPEED"
+            value="0.3f"
+            description="Lateral body velocity used when turning (m/s)"/>
+    <define name="PLANT_AVOIDER_STRAIGHT_SAFE_PCT"
+            value="40.0f"
+            description="Go straight if center green load is below this percent"/>
+  </doc>
+
+  <dep>
+    <depends>video_thread</depends>
+  </dep>
+
+  <header>
+    <file name="MAV_plant_avoider.h"/>
+  </header>
+
+  <init fun="plant_avoider_init()"/>
+  <periodic fun="plant_avoider_periodic()" freq="4" autorun="TRUE"/>
+
+  <makefile target="ap|nps">
+    <file name="MAV_plant_avoider.cpp"/>
+  </makefile>
+
+  <makefile target="nps">
+    <raw>
+      nps.CXXFLAGS += -DPLANT_AVOIDER_ROTATED_CAMERA_TOP_HALF=1
+      nps.CXXFLAGS += -DPLANT_AVOIDER_Y_CENTER=46
+      nps.CXXFLAGS += -DPLANT_AVOIDER_U_CENTER=106
+      nps.CXXFLAGS += -DPLANT_AVOIDER_V_CENTER=129
+      nps.CXXFLAGS += -DPLANT_AVOIDER_Y_TOL=20
+      nps.CXXFLAGS += -DPLANT_AVOIDER_U_TOL=20
+      nps.CXXFLAGS += -DPLANT_AVOIDER_V_TOL=20
+      nps.CXXFLAGS += -DPLANT_AVOIDER_STRAIGHT_SAFE_PCT=25.0f
+      nps.CXXFLAGS += -DPLANT_AVOIDER_FORWARD_SPEED=0.18f
+      nps.CXXFLAGS += -DPLANT_AVOIDER_TURN_SPEED=0.55f
+    </raw>
+  </makefile>
+
+</module>

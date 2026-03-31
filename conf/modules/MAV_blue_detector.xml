@@ -1,0 +1,68 @@
+<?xml version="1.0"?>
+<!--
+  MAV Blue Detector Module
+
+  Detects blue pixels in YUV422 camera images using logic similar to
+  MAV_plant_avoider and computes zone loads (left/straight/right).
+
+  Add to your airframe:
+    <module name="MAV_blue_detector"/>
+-->
+<module name="MAV_blue_detector" dir="computer_vision">
+
+  <doc>
+    <description>
+      Blue pixel detector for front-camera avoidance/perception experiments.
+      It can optionally draw a blue mask on the camera stream and exports
+      left/straight/right load percentages via globals.
+    </description>
+
+    <define name="BLUE_DETECTOR_CAMERA"
+            value="front_camera|bottom_camera"
+            description="Camera device to process"/>
+    <define name="BLUE_DETECTOR_FPS"
+            value="4"
+            description="Vision callback rate in Hz"/>
+    <define name="BLUE_DETECTOR_ENABLE_VISION_CALLBACK"
+            value="0|1"
+            description="Enable camera callback processing"/>
+          <define name="BLUE_DETECTOR_ENABLE_STANDALONE_CONTROL"
+            value="0|1"
+            description="Enable plant-style body-velocity avoidance control"/>
+          <define name="BLUE_DETECTOR_NAV_MODE_CONTROL"
+            value="0|1"
+            description="Allow module body-velocity control while in NAV mode"/>
+    <define name="BLUE_DETECTOR_SHOW_MASK"
+            value="0|1"
+            description="Draw blue mask overlay on detected pixels"/>
+
+    <define name="BLUE_DETECTOR_Y_CENTER" value="90" description="Y center for blue color"/>
+    <define name="BLUE_DETECTOR_U_CENTER" value="190" description="U center for blue color"/>
+    <define name="BLUE_DETECTOR_V_CENTER" value="70" description="V center for blue color"/>
+
+    <define name="BLUE_DETECTOR_Y_TOL" value="40" description="Y tolerance"/>
+    <define name="BLUE_DETECTOR_U_TOL" value="45" description="U tolerance"/>
+    <define name="BLUE_DETECTOR_V_TOL" value="50" description="V tolerance"/>
+
+    <define name="BLUE_DETECTOR_GROUND_ALT_M" value="0.50" description="Disable control below this altitude [m]"/>
+    <define name="BLUE_DETECTOR_FORWARD_SPEED" value="0.30" description="Forward body velocity [m/s] when path is clear"/>
+    <define name="BLUE_DETECTOR_TURN_SPEED" value="0.30" description="Lateral body velocity [m/s] while turning"/>
+    <define name="BLUE_DETECTOR_STRAIGHT_SAFE_PCT" value="40.0" description="Go straight if center blue load is below this percent"/>
+  </doc>
+
+  <dep>
+    <depends>video_thread</depends>
+  </dep>
+
+  <header>
+    <file name="MAV_blue_detector.h"/>
+  </header>
+
+  <init fun="blue_detector_init()"/>
+  <periodic fun="blue_detector_periodic()" freq="4" autorun="TRUE"/>
+
+  <makefile target="ap|nps">
+    <file name="MAV_blue_detector.cpp"/>
+  </makefile>
+
+</module>

@@ -12,12 +12,27 @@
       <define name="MT9V117_TARGET_FPS" value="20"/>
       
       <!-- Detect orange -->
-      <define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="30"/>
-      <define name="COLOR_OBJECT_DETECTOR_LUM_MAX1" value="190"/>
-      <define name="COLOR_OBJECT_DETECTOR_CB_MIN1" value="70"/>
-      <define name="COLOR_OBJECT_DETECTOR_CB_MAX1" value="130"/>
-      <define name="COLOR_OBJECT_DETECTOR_CR_MIN1" value="150"/>
-      <define name="COLOR_OBJECT_DETECTOR_CR_MAX1" value="190"/>
+      <define name="ORANGE_OBJECT_DETECTOR_LUM_MIN" value="0"/>
+      <define name="ORANGE_OBJECT_DETECTOR_LUM_MAX" value="255"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CB_MIN" value="70"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CB_MAX" value="135"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CR_MIN" value="140"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CR_MAX" value="255"/>
+
+      <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="20"/>
+      <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="120"/>
+      <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="179"/>
+      <define name="BLUE_OBJECT_DETECTOR_CB_MAX" value="240"/>
+      <define name="BLUE_OBJECT_DETECTOR_CR_MIN" value="48"/>
+      <define name="BLUE_OBJECT_DETECTOR_CR_MAX" value="108"/>
+
+      <define name="GREEN_OBJECT_DETECTOR_LUM_MIN" value="20"/>
+      <define name="GREEN_OBJECT_DETECTOR_LUM_MAX" value="176"/>
+      <define name="GREEN_OBJECT_DETECTOR_CB_MIN" value="20"/>
+      <define name="GREEN_OBJECT_DETECTOR_CB_MAX" value="122"/>
+      <define name="GREEN_OBJECT_DETECTOR_CR_MIN" value="100"/>
+      <define name="GREEN_OBJECT_DETECTOR_CR_MAX" value="167"/>
+
       <module name="ahrs" type="int_cmpl_quat">
         <configure name="USE_MAGNETOMETER" value="FALSE"/>
         <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
@@ -28,14 +43,30 @@
       <module name="fdm" type="gazebo"/>
       <define name="VIDEO_CAPTURE_PATH" value="/tmp/paparazzi/images"/>
       <define name="LOGGER_FILE_PATH" value="/tmp/paparazzi/log"/>
-      
+      <define name="OBJECT_DETECTOR_VERBOSE" value="TRUE"/>
+
       <!-- Detect orange -->
-      <define name="COLOR_OBJECT_DETECTOR_LUM_MIN1" value="41"/>
-      <define name="COLOR_OBJECT_DETECTOR_LUM_MAX1" value="183"/>
-      <define name="COLOR_OBJECT_DETECTOR_CB_MIN1" value="53"/>
-      <define name="COLOR_OBJECT_DETECTOR_CB_MAX1" value="121"/>
-      <define name="COLOR_OBJECT_DETECTOR_CR_MIN1" value="134"/>
-      <define name="COLOR_OBJECT_DETECTOR_CR_MAX1" value="249"/>
+      <define name="ORANGE_OBJECT_DETECTOR_LUM_MIN" value="0"/>
+      <define name="ORANGE_OBJECT_DETECTOR_LUM_MAX" value="255"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CB_MIN" value="0"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CB_MAX" value="255"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CR_MIN" value="145"/>
+      <define name="ORANGE_OBJECT_DETECTOR_CR_MAX" value="255"/>
+
+      <define name="BLUE_OBJECT_DETECTOR_LUM_MIN" value="65"/>
+      <define name="BLUE_OBJECT_DETECTOR_LUM_MAX" value="90"/>
+      <define name="BLUE_OBJECT_DETECTOR_CB_MIN" value="125"/>
+      <define name="BLUE_OBJECT_DETECTOR_CB_MAX" value="250"/>
+      <define name="BLUE_OBJECT_DETECTOR_CR_MIN" value="0"/>
+      <define name="BLUE_OBJECT_DETECTOR_CR_MAX" value="130"/>
+
+      <define name="GREEN_OBJECT_DETECTOR_LUM_MIN" value="30"/>
+      <define name="GREEN_OBJECT_DETECTOR_LUM_MAX" value="160"/>
+      <define name="GREEN_OBJECT_DETECTOR_CB_MIN" value="70"/>
+      <define name="GREEN_OBJECT_DETECTOR_CB_MAX" value="120"/>
+      <define name="GREEN_OBJECT_DETECTOR_CR_MIN" value="110"/>
+      <define name="GREEN_OBJECT_DETECTOR_CR_MAX" value="130"/>
+
       <module name="ahrs" type="float_mlkf"> <!-- was int_cmpl_quat  -->
         <configure name="USE_MAGNETOMETER" value="FALSE"/>
         <define name="AHRS_USE_GPS_HEADING" value="TRUE"/>
@@ -70,20 +101,42 @@
       <define name="OPENCVDEMO_CAMERA" value="front_camera"/>
       <define name="OPENCVDEMO_FPS" value="10"/>
     </module -->
-    <module name="cv_detect_color_object">
-      <define name="COLOR_OBJECT_DETECTOR_CAMERA1" value="front_camera"/>
+    <module name="MAV_cv_detect_group12_cmjong">
+      <define name="COLOR_OBJECT_DETECTOR_CAMERA" value="front_camera"/>
       <define name="COLOR_OBJECT_DETECTOR_FPS1" value="0"/>
-      <define name="COLOR_OBJECT_DETECTOR_DRAW1" value="1"/>
+      <define name="COLOR_OBJECT_DETECTOR_DRAW" value="0"/>
+      <define name="THRESHOLD_ORANGE_DETECTOR" value="600"/>
+      <define name="THRESHOLD_BLUE_DETECTOR" value="200"/>
+      <define name="THRESHOLD_GREEN_DETECTOR" value="400"/>
+      <define name="LUKE_OF_VISUAL_DETECTION_ID" value="3"/>
+      <define name="OPTICFLOW_CAMERA" value="front_camera"/>
     </module>
-    <module name="orange_avoider">
-      <define name="ORANGE_AVOIDER_VISUAL_DETECTION_ID" value="COLOR_OBJECT_DETECTION1_ID"/>
+    <module name="MAV_fast_controller_group12_cmjong">
+      <define name="MAV_cmjong_VISUAL_DETECTION_ID" value="COLOR_OBJECT_DETECTION1_ID"/>
+      <define name="MAV_cmjong_OF_VISUAL_DETECTION_ID" value="3"/>
+    </module>
+    <module name="MAV_plant_avoider">
+      <define name="PLANT_AVOIDER_CAMERA" value="front_camera"/>
+      <define name="PLANT_AVOIDER_FPS" value="5"/>
+      <define name="PLANT_AVOIDER_SHOW_MASK" value="0"/>
     </module>
     <module name="MAV_blue_detector">
       <define name="BLUE_DETECTOR_CAMERA" value="front_camera"/>
       <define name="BLUE_DETECTOR_FPS" value="4"/>
       <define name="BLUE_DETECTOR_ENABLE_VISION_CALLBACK" value="1"/>
       <define name="BLUE_DETECTOR_ENABLE_STANDALONE_CONTROL" value="0"/>
-      <define name="BLUE_DETECTOR_SHOW_MASK" value="1"/>
+      <define name="BLUE_DETECTOR_SHOW_MASK" value="0"/>
+      <define name="BLUE_DETECTOR_USE_HALF_FOV" value="0"/>
+      <define name="BLUE_DETECTOR_MASK_Y" value="41"/>
+      <define name="BLUE_DETECTOR_MASK_U" value="240"/>
+      <define name="BLUE_DETECTOR_MASK_V" value="110"/>
+      <define name="BLUE_DETECTOR_SIGNED_CENTERS" value="1"/>
+      <define name="BLUE_DETECTOR_Y_CENTER" value="3"/>
+      <define name="BLUE_DETECTOR_U_CENTER" value="81"/>
+      <define name="BLUE_DETECTOR_V_CENTER" value="-50"/>
+      <define name="BLUE_DETECTOR_Y_TOL" value="30"/>
+      <define name="BLUE_DETECTOR_U_TOL" value="30"/>
+      <define name="BLUE_DETECTOR_V_TOL" value="30"/>
     </module>
     <module name="video_rtp_stream">
       <define name="VIEWVIDEO_CAMERA" value="front_camera"/>
@@ -152,7 +205,17 @@
     <define name="MAG_Y_NEUTRAL" value="0"/>
     <define name="MAG_Z_NEUTRAL" value="0"/>
   </section>
-
+  <!-- Optical flow settings -->
+  <section name="OPTICFLOW" prefix="OPTICFLOW_">
+    <define name="MAX_TRACK_CORNERS" value="100"/>
+    <define name="FAST9_THRESHOLD" value="7"/>
+    <define name="FAST9_MIN_DISTANCE" value="5"/>
+    <define name="FEATURE_MANAGEMENT" value="TRUE"/>
+    <define name="FAST9_REGION_DETECT" value="TRUE"/>
+    <define name="FAST9_NUM_REGIONS" value="9"/>
+    <define name="PYRAMID_LEVEL" value="2"/>
+    <define name="METHOD" value="0"/>
+  </section>
   <!-- local magnetic field -->
   <!-- http://wiki.paparazziuav.org/wiki/Subsystem/ahrs#Local_Magnetic_Field -->
   <section name="AHRS" prefix="AHRS_">

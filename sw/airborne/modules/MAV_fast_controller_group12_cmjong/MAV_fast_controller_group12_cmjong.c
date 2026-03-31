@@ -1,0 +1,435 @@
+/*
+ * Copyright (C) Roland Meertens
+ *
+ * This file is part of paparazzi
+ *
+ */
+/**
+ * @file "modules/MAV_fast_controller_group12_cmjong/MAV_fast_controller_group12_cmjong.c"
+ * @brief State-machine flight controller for the TU Delft MAV course (group 12 / cmjong).
+ *
+ * Receives obstacle detections from MAV_cv_detect_group12_cmjong via ABI messages and
+ * drives the NAV-mode waypoints to avoid obstacles.  Two detection sources are fused:
+ *  - Color detection (orange / blue / green pixel counts per zone) → color-based turns.
+ *  - Optical flow divergence                                        → OF-based turns.
+ *
+ * State machine overview:
+ *   SAFE_AND_WAIT  →  BRAKING  →  TURN_AVOID  →  SAFE_AND_WAIT
+ *                ↘                              ↗
+ *             MOVE_FORWARD_WITH_FIXED_DISTANCE
+ *             OUT_OF_BOUNDS  (rotate until back inside arena)
+ *
+ * ABI bindings (see wiki.paparazziuav.org/wiki/ABI):
+ *   COLOR_OBJECT_DETECTION1_ID  — color zone scores from cv_detect module
+ *   LUKE_OF_VISUAL_DETECTION_ID — optical-flow obstacle quality from cv_detect module
+ */
+
+#include "modules/MAV_fast_controller_group12_cmjong/MAV_fast_controller_group12_cmjong.h"
+#include "modules/computer_vision/MAV_cv_detect_group12_cmjong.h"
+#include "firmwares/rotorcraft/navigation.h"
+#include "generated/airframe.h"
+#include "state.h"
+#include "modules/core/abi.h"
+#include "mcu_periph/sys_time.h"
+#include <time.h>
+#include <stdio.h>
+#include <math.h>
+
+#include "generated/flight_plan.h"
+
+#define MAV_FAST_CONTROLLER_VERBOSE TRUE
+
+#define PRINT(string,...) fprintf(stderr, "[MAV_fast_controller_group12_cmjong->%s()] " string,__FUNCTION__ , ##__VA_ARGS__)
+#if MAV_FAST_CONTROLLER_VERBOSE
+#define VERBOSE_PRINT PRINT
+#else
+#define VERBOSE_PRINT(...)
+#endif
+
+static uint8_t move_waypoint_forward(uint8_t waypoint, float distance_m);
+static uint8_t calculate_forward_position(struct EnuCoor_i *new_coor, float distance_m);
+static uint8_t set_waypoint_position(uint8_t waypoint, struct EnuCoor_i *new_coor);
+static uint8_t rotate_drone_heading(float degrees);
+static void hold_current_waypoints(void);
+static int16_t choose_color_turn_dir(void);
+static int16_t choose_of_turn_dir(float now);
+
+enum navigation_state_t {
+  SAFE_AND_WAIT,                   ///< Hold position; wait for a clean camera frame before moving.
+  BRAKING,                         ///< Hold waypoints and wait for forward speed to drop near zero.
+  TURN_AVOID,                      ///< Execute a committed avoidance turn (color- or OF-based).
+  SEARCH_FOR_SAFE_HEADING,         ///< Reserved for future use — not currently entered.
+  MOVE_FORWARD_WITH_FIXED_DISTANCE,///< Advance MOVE_DISTANCE metres toward current heading.
+  GATE_DETECTED,                   ///< Reserved for future use — not currently entered.
+  OUT_OF_BOUNDS,                   ///< Outside obstacle zone; rotate until WP_TRAJECTORY is back inside.
+};
+
+
+#define AVOIDANCE_TURN_DEGREES            5.f    ///< [deg] Per-cycle yaw step during any avoidance turn.
+#define MOVE_DISTANCE                     0.5f   ///< [m]   Waypoint advance per MOVE_FORWARD cycle.
+#define AVOIDANCE_TURN_DEGREES_OutOfBound 5.f    ///< [deg] Per-cycle yaw step when recovering from out-of-bounds.
+#define OF_AVOIDANCE_TURN_DEGREES       120.f    ///< [deg] Total yaw for an optical-flow obstacle turn.
+#define COLOR_AVOIDANCE_TURN_DEGREES     45.f    ///< [deg] Total yaw for a color-detection obstacle turn.
+#define GYRO_YAW_RATE_THRESHOLD          0.15f   ///< [rad/s] Suppress new OF triggers while yaw rate exceeds this.
+#define OF_STARTUP_IGNORE_TIME           2.0f    ///< [s]   Ignore OF detections for this long after takeoff (transient flow from spin-up).
+#define BRAKE_SPEED_THRESHOLD            0.1f    ///< [m/s] Consider the drone stopped when forward speed is below this.
+#define BRAKE_TIMEOUT                    2.0f    ///< [s]   Force exit from BRAKING after this time even if speed is still above threshold.
+#define RECENT_COLOR_DIR_TIMEOUT         3.0f    ///< [s]   How long a color turn direction is kept as a hint for subsequent OF turns.
+#define STUCK_TIMER_THRESHOLD           10.0f    ///< [s]   Trigger emergency escape rotation if the drone hasn't moved in this long.
+#define STUCK_DISTANCE_THRESHOLD         0.1f    ///< [m]   Minimum displacement to reset the stuck timer.
+#define EMERGENCY_TURN_DEGREES         100.0f    ///< [deg] Heading change applied as a stuck-escape manoeuvre.
+
+// define and initialise global variables
+enum navigation_state_t navigation_state = SAFE_AND_WAIT;
+
+static bool of_obstacle_ahead = false;
+static float of_turn_remaining = 0.0f;
+static float color_turn_remaining = 0.0f;
+static bool was_in_flight = false;
+static float of_ignore_until = 0.0f;
+static float brake_start_time = 0.0f;
+static float recent_color_dir_until = 0.0f;
+static bool pending_turn_from_of = false;
+static int16_t pending_turn_dir = 1;
+static int16_t recent_color_dir = 0;
+static float last_moved_time = 0.0f;
+static struct EnuCoor_i last_detected_position;
+static bool position_initialized = false;
+uint16_t detected_local = 1;
+int16_t col_left_loss = 0;
+int16_t col_center_loss = 0;
+int16_t col_right_loss = 0;
+int16_t lowest_loss_dir = 1;
+
+/*
+ * This next section defines an ABI messaging event (http://wiki.paparazziuav.org/wiki/ABI), necessary
+ * any time data calculated in another module needs to be accessed. Including the file where this external
+ * data is defined is not enough, since modules are executed parallel to each other, at different frequencies,
+ * in different threads. The ABI event is triggered every time new data is sent out, and as such the function
+ * defined in this file does not need to be explicitly called, only bound in the init function
+ */
+#ifndef MAV_cmjong_VISUAL_DETECTION_ID
+#define MAV_cmjong_VISUAL_DETECTION_ID ABI_BROADCAST
+#endif
+#ifndef MAV_cmjong_OF_VISUAL_DETECTION_ID
+#define MAV_cmjong_OF_VISUAL_DETECTION_ID ABI_BROADCAST
+#endif
+static abi_event cv_detect_event;
+static abi_event luke_of_event;
+
+static void cv_detection_message_callback(
+    uint8_t  __attribute__((unused)) sender_id,
+    int16_t  detected,
+    int16_t  left_loss,
+    int16_t  center_loss,
+    int16_t  right_loss,
+    int32_t  lowest_dir,
+    int16_t  __attribute__((unused)) extra)
+{
+  detected_local   = detected;
+  col_left_loss    = left_loss;
+  col_center_loss  = center_loss;
+  col_right_loss   = right_loss;
+  lowest_loss_dir  = (int16_t)lowest_dir;
+}
+
+static void luke_of_message_callback(
+    uint8_t  __attribute__((unused)) sender_id,
+    int16_t  __attribute__((unused)) pixel_x,
+    int16_t  __attribute__((unused)) pixel_y,
+    int16_t  __attribute__((unused)) pixel_width,
+    int16_t  __attribute__((unused)) pixel_height,
+    int32_t  quality,
+    int16_t  __attribute__((unused)) extra)
+{
+  of_obstacle_ahead = (quality > 0);
+}
+
+/* Called once at module startup — bind both ABI channels. */
+void MAV_fast_controller_group12_cmjong_init(void)
+{
+  AbiBindMsgVISUAL_DETECTION(MAV_cmjong_VISUAL_DETECTION_ID, &cv_detect_event, cv_detection_message_callback);
+  AbiBindMsgVISUAL_DETECTION(MAV_cmjong_OF_VISUAL_DETECTION_ID, &luke_of_event, luke_of_message_callback);
+}
+
+/* Called periodically (nav frequency) — runs the avoidance state machine. */
+void MAV_fast_controller_group12_cmjong_periodic(void)
+{
+  // only evaluate our state machine if we are flying
+  if (!autopilot_in_flight()) {
+    was_in_flight = false;
+    navigation_state = SAFE_AND_WAIT;
+    of_obstacle_ahead = false;
+    of_turn_remaining = 0.0f;
+    pending_turn_from_of = false;
+    pending_turn_dir = 1;
+    recent_color_dir_until = 0.0f;
+    recent_color_dir = 0;
+    last_moved_time = 0.0f;
+    position_initialized = false;
+    return;
+  }
+
+  float now = get_sys_time_float();
+  if (!was_in_flight) {
+    was_in_flight = true;
+    of_ignore_until = now + OF_STARTUP_IGNORE_TIME;
+    of_obstacle_ahead = false;
+    of_turn_remaining = 0.0f;
+    color_turn_remaining = 0.0f;
+    pending_turn_from_of = false;
+    pending_turn_dir = 1;
+    recent_color_dir_until = 0.0f;
+    recent_color_dir = 0;
+    last_moved_time = 0.0f;
+    position_initialized = false;
+    luke_of_request_reset = true;
+  }
+
+  // Stuck timer: detect if drone is stationary for too long and force escape rotation
+  struct EnuCoor_i current_pos = *stateGetPositionEnu_i();
+  if (!position_initialized) {
+    last_detected_position = current_pos;
+    last_moved_time = now;
+    position_initialized = true;
+  } else {
+    float dist_moved = sqrtf(powf(POS_FLOAT_OF_BFP(current_pos.x - last_detected_position.x), 2.0f) +
+                              powf(POS_FLOAT_OF_BFP(current_pos.y - last_detected_position.y), 2.0f));
+
+    if (dist_moved > STUCK_DISTANCE_THRESHOLD) {
+      // Drone moved significantly, reset stuck timer
+      last_moved_time = now;
+      last_detected_position = current_pos;
+    } else {
+      if ((now - last_moved_time) >= STUCK_TIMER_THRESHOLD) {
+        // Force emergency right rotation to escape stuck state
+        VERBOSE_PRINT("STUCK TIMER TRIGGERED: Executing emergency 100° right rotation\n");
+        rotate_drone_heading(EMERGENCY_TURN_DEGREES);
+        last_moved_time = now;
+        last_detected_position = current_pos;
+      }
+    }
+  }
+
+  if (now < of_ignore_until) {
+    of_obstacle_ahead = false;
+  }
+
+  // Gyro-based rotation lock: suppress new OF triggers while already rotating
+  if (fabsf(stateGetBodyRates_f()->r) > GYRO_YAW_RATE_THRESHOLD) {
+    of_obstacle_ahead = false;
+  }
+
+  if (detected_local > 0) {
+    recent_color_dir = lowest_loss_dir;
+    recent_color_dir_until = now + RECENT_COLOR_DIR_TIMEOUT;
+  }
+
+  VERBOSE_PRINT(
+  "State: %d | det: %u | L:%d C:%d R:%d | LowestLoss: %s | of: %d | of_turn_rem: %.1f | col_turn_rem: %.1f | of_grace: %.1f\n",
+  navigation_state,
+  detected_local,
+  col_left_loss, col_center_loss, col_right_loss,
+  (lowest_loss_dir < 0) ? "LEFT" : ((lowest_loss_dir > 0) ? "RIGHT" : "CENTER"),
+  of_obstacle_ahead,
+  of_turn_remaining,
+  color_turn_remaining,
+  fmaxf(0.0f, of_ignore_until - now)
+);
+
+  switch (navigation_state) {
+
+    case SAFE_AND_WAIT:
+      // Hold position, wait for cv_detect to get a reading
+      hold_current_waypoints();
+
+      if (detected_local == 0 && !of_obstacle_ahead) {
+        navigation_state = MOVE_FORWARD_WITH_FIXED_DISTANCE;
+      } else if (detected_local > 0 || of_obstacle_ahead) {
+        pending_turn_from_of = (of_obstacle_ahead && detected_local == 0);
+        pending_turn_dir = pending_turn_from_of ? choose_of_turn_dir(now) : choose_color_turn_dir();
+        if (pending_turn_from_of) {
+          of_turn_remaining = OF_AVOIDANCE_TURN_DEGREES;
+        }
+        // Brake first before turning
+        brake_start_time = now;
+        navigation_state = BRAKING;
+      }
+      break;
+
+    case BRAKING:
+    {
+      hold_current_waypoints();
+      float heading = stateGetNedToBodyEulers_f()->psi;
+      struct NedCoor_f *speed = stateGetSpeedNed_f();
+      float fwd_speed = speed->x * sinf(heading) + speed->y * cosf(heading);
+
+      // Use heading-projected NED speed (dot product of velocity with heading unit vector)
+      // rather than total speed magnitude so that sideways drift doesn't prevent braking exit.
+      if (fabsf(fwd_speed) < BRAKE_SPEED_THRESHOLD || (now - brake_start_time) > BRAKE_TIMEOUT) {
+        navigation_state = TURN_AVOID;
+      }
+      break;
+    }
+
+  case TURN_AVOID:
+    // Only process NEW of_obstacle_ahead if we're NOT in the middle of an OF turn
+    bool fresh_of = of_obstacle_ahead && !pending_turn_from_of;
+    
+    if (pending_turn_from_of && of_turn_remaining > 0.f) {
+      // Mid OF-turn — complete it. Ignore fresh OF signals.
+      float step = (of_turn_remaining < AVOIDANCE_TURN_DEGREES)
+                  ? of_turn_remaining : AVOIDANCE_TURN_DEGREES;
+      rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * step);
+      of_turn_remaining -= step;
+      if (of_turn_remaining <= 0.f) {
+        of_turn_remaining = 0.f;
+        pending_turn_from_of = false;
+        pending_turn_dir = 1;
+        luke_of_request_reset = true;
+        navigation_state = SAFE_AND_WAIT;
+      }
+    } else if (color_turn_remaining > 0.f) {
+      // Mid color-turn — drain it before re-evaluating direction
+      float step = (color_turn_remaining < AVOIDANCE_TURN_DEGREES)
+                  ? color_turn_remaining : AVOIDANCE_TURN_DEGREES;
+      rotate_drone_heading((pending_turn_dir < 0 ? -1.0f : 1.0f) * step);
+      color_turn_remaining -= step;
+      if (color_turn_remaining <= 0.f) {
+        color_turn_remaining = 0.f;
+        navigation_state = SAFE_AND_WAIT;
+      }
+    } else if (fresh_of) {
+      // Only start a NEW OF turn if we just finished the last one
+      pending_turn_from_of = true;
+      pending_turn_dir = choose_of_turn_dir(now);
+      of_turn_remaining = OF_AVOIDANCE_TURN_DEGREES;
+    } else if (detected_local > 0) {
+      // Start a committed color turn — lock direction now, drain in subsequent cycles
+      pending_turn_from_of = false;
+      pending_turn_dir = choose_color_turn_dir();
+      color_turn_remaining = COLOR_AVOIDANCE_TURN_DEGREES;
+    } else {
+      pending_turn_dir = 1;
+      navigation_state = SAFE_AND_WAIT;
+    }
+    break;
+
+
+    case MOVE_FORWARD_WITH_FIXED_DISTANCE:
+    {
+      struct EnuCoor_i next_coor;
+
+      if (!InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
+        navigation_state = OUT_OF_BOUNDS;
+
+      } else if (detected_local > 0 || of_obstacle_ahead) {
+        pending_turn_from_of = (of_obstacle_ahead && detected_local == 0);
+        pending_turn_dir = pending_turn_from_of ? choose_of_turn_dir(now) : choose_color_turn_dir();
+        if (pending_turn_from_of) {
+          of_turn_remaining = OF_AVOIDANCE_TURN_DEGREES;
+        }
+        // Brake first before turning
+        brake_start_time = now;
+        navigation_state = BRAKING;
+
+      } else {
+        calculate_forward_position(&next_coor, MOVE_DISTANCE);
+
+        if (!InsideObstacleZone(POS_FLOAT_OF_BFP(next_coor.x), POS_FLOAT_OF_BFP(next_coor.y))) {
+          navigation_state = OUT_OF_BOUNDS;
+
+        } else {
+          set_waypoint_position(WP_TRAJECTORY, &next_coor);
+          set_waypoint_position(WP_GOAL, &next_coor);
+        }
+      }
+      break;
+    }
+
+    case OUT_OF_BOUNDS:
+      // Rotate and probe until back inside arena
+      rotate_drone_heading(AVOIDANCE_TURN_DEGREES_OutOfBound);
+      move_waypoint_forward(WP_TRAJECTORY, 1.5f);
+
+      if (InsideObstacleZone(WaypointX(WP_TRAJECTORY), WaypointY(WP_TRAJECTORY))) {
+        navigation_state = SAFE_AND_WAIT;
+      }
+      break;
+
+    default:
+      break;
+  }
+}
+
+
+/* Returns uint8_t false (0) to match the legacy nav helper signature; return value unused. */
+static uint8_t rotate_drone_heading(float degrees)
+{
+  float new_heading = stateGetNedToBodyEulers_f()->psi + RadOfDeg(degrees);
+  FLOAT_ANGLE_NORMALIZE(new_heading);
+  nav.heading = new_heading;
+  // VERBOSE_PRINT("Rotating heading by %.1f deg, new heading: %.1f deg\n",
+  //   degrees, DegOfRad(new_heading));
+  return false;
+}
+
+
+static uint8_t move_waypoint_forward(uint8_t waypoint, float distance_m)
+{
+  struct EnuCoor_i new_coor;
+  calculate_forward_position(&new_coor, distance_m);
+  set_waypoint_position(waypoint, &new_coor);
+  return false;
+}
+
+static uint8_t calculate_forward_position(struct EnuCoor_i *new_coor, float distance_m)
+{
+  float heading = stateGetNedToBodyEulers_f()->psi;
+  new_coor->x = stateGetPositionEnu_i()->x + POS_BFP_OF_REAL(sinf(heading) * distance_m);
+  new_coor->y = stateGetPositionEnu_i()->y + POS_BFP_OF_REAL(cosf(heading) * distance_m);
+  // VERBOSE_PRINT("Calculated %.2f m forward: x=%.2f y=%.2f from pos(%.2f, %.2f) heading=%.1f deg\n",
+  //   distance_m,
+  //   POS_FLOAT_OF_BFP(new_coor->x), POS_FLOAT_OF_BFP(new_coor->y),
+  //   stateGetPositionEnu_f()->x, stateGetPositionEnu_f()->y,
+  //   DegOfRad(heading));
+  return false;
+}
+
+
+static uint8_t set_waypoint_position(uint8_t waypoint, struct EnuCoor_i *new_coor)
+{
+  // VERBOSE_PRINT("Setting waypoint %d to x=%.2f y=%.2f\n",
+    // waypoint, POS_FLOAT_OF_BFP(new_coor->x), POS_FLOAT_OF_BFP(new_coor->y));
+  waypoint_move_xy_i(waypoint, new_coor->x, new_coor->y);
+  return false;
+}
+
+static void hold_current_waypoints(void)
+{
+  waypoint_move_here_2d(WP_GOAL);
+  waypoint_move_here_2d(WP_TRAJECTORY);
+}
+
+static int16_t choose_color_turn_dir(void)
+{
+  return (lowest_loss_dir < 0) ? -1 : 1;
+}
+
+/*
+ * choose_of_turn_dir — pick a turn direction when an OF obstacle is detected.
+ *
+ * Optical flow alone cannot tell which side is clearer, so we borrow the most recent
+ * color-detection direction (kept valid for RECENT_COLOR_DIR_TIMEOUT seconds) as a hint.
+ * If no recent color reading exists (or it indicated straight), default to +1 (right).
+ */
+static int16_t choose_of_turn_dir(float now)
+{
+  if (now <= recent_color_dir_until && recent_color_dir < 0) {
+    return -1;
+  }
+  if (now <= recent_color_dir_until && recent_color_dir > 0) {
+    return 1;
+  }
+  return 1;  // default: turn right when no color hint is available
+}
