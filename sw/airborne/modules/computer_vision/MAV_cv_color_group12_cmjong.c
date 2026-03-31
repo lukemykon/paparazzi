@@ -12,13 +12,6 @@
  */
 
 #include "modules/computer_vision/MAV_cv_color_group12_cmjong.h"
-
-/*
- * Sparse scan-band strategy: instead of testing every pixel in the full frame we sample
- * SCAN_NUM_LINES thin vertical strips (in image-x, i.e. physical vertical bands).
- * This keeps CPU load proportional to SCAN_NUM_LINES*SCAN_THICKNESS*h rather than w*h,
- * while still giving a representative cross-section of the obstacle-zone columns.
- */
 #define SCAN_NUM_LINES   5   ///< number of vertical scan strips (in image-x)
 #define SCAN_THICKNESS   1   ///< width of each strip in pixels
 #define SCAN_SPACING     15  ///< gap between adjacent strip edges in pixels
@@ -27,9 +20,6 @@
  * draw_horizontal_line — paint a single-pixel-wide vertical line at column x_col
  * into a YUV422 buffer.
  *
- * Despite the name "horizontal line", because the camera feed is rotated 90° this
- * function draws what appears as a vertical divider in the physical scene.  It is
- * used to overlay scan-band boundaries on the streamed video for debugging.
  *
  * @param buffer  Pointer to the YUV422 image buffer (in-place modification).
  * @param img_w   Image width in pixels.
